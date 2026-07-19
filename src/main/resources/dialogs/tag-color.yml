@@ -1,0 +1,16 @@
+# Native dialog for team tag color input.
+# Used only on compatible Paper/Paper-fork servers with native-dialogs.enabled: true.
+# Spigot and older servers use messages.yml chat prompts instead.
+# Expected input: a legacy color like &e, a color name like yellow, or a hex color like #03fc88.
+title: "{theme}Tag Color"
+body:
+  - "{muted}Use &&e{muted}e, yellow, or ##03fc88{muted}03fc88."
+  - "{muted}Current value: {theme}{current}"
+field-label: "{white}Color"
+initial-value: "{current}"
+confirm-button: "{good}Save"
+cancel-button: "{bad}Cancel"
+body-width: 300
+input-width: 300
+button-width: 100
+max-length: 32

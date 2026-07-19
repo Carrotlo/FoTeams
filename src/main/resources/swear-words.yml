@@ -1,0 +1,6 @@
+# Words in this list are blocked in new team names, team tags, team descriptions,
+# team chat, and ally chat.
+# Matching is case-insensitive and ignores spaces, underscores, punctuation, and symbols.
+# Existing teams are not renamed or changed if they already contain a listed word.
+words:
+  - badword

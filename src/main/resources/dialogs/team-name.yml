@@ -1,0 +1,16 @@
+# Native dialog for team name input.
+# Used only on compatible Paper/Paper-fork servers with native-dialogs.enabled: true.
+# Spigot and older servers use messages.yml chat prompts instead.
+# Expected input: letters, numbers, and underscores within the configured max-team-name-length.
+title: "{theme}Team Name"
+body:
+  - "{muted}Use letters, numbers, and underscores."
+  - "{muted}Current value: {theme}{current}"
+field-label: "{white}Team name"
+initial-value: "{current}"
+confirm-button: "{good}Save"
+cancel-button: "{bad}Cancel"
+body-width: 300
+input-width: 300
+button-width: 100
+max-length: 64

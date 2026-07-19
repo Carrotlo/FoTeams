@@ -1,0 +1,27 @@
+name: FoTeams
+description: Modern GUI-first team plugin with SQLite storage
+version: '${version}'
+main: me.foesio.foTeams.FoTeams
+api-version: '1.21'
+authors: [Carrotio]
+softdepend: [PlaceholderAPI, Vault, FoLevels]
+
+commands:
+  foteams:
+    description: Main FoTeams command
+    aliases: [team, teams]
+    permission: foteams.use
+    usage: /<command> [subcommand]
+  foteamsadmin:
+    description: FoTeams admin command
+    aliases: [teamadmin, teamsadmin]
+    permission: foteams.admin
+    usage: /<command> [subcommand]
+
+permissions:
+  foteams.use:
+    description: Access to FoTeams player commands
+    default: true
+  foteams.admin:
+    description: Access to FoTeams admin commands
+    default: op

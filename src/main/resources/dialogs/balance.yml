@@ -1,0 +1,32 @@
+# Native dialog for team bank deposit and withdraw input.
+# Used only on compatible Paper/Paper-fork servers with native-dialogs.enabled: true.
+# Spigot and older servers use messages.yml chat prompts instead.
+# Valid placeholders: {team_balance}, {player_balance}.
+# Expected input: a positive number.
+title: "{theme}Team Bank"
+body:
+  - "{muted}Team bank: {theme}{team_balance}"
+  - "{muted}Your balance: {white}{player_balance}"
+field-label: "{white}Amount"
+initial-value: ""
+placeholder: "100"
+deposit-button:
+  label: "{good}Deposit"
+  tooltip: "Deposit this amount into the team bank."
+  icon: "emerald"
+withdraw-button:
+  label: "{theme}Withdraw"
+  tooltip: "Withdraw this amount from the team bank."
+  icon: "gold_ingot"
+back-button:
+  label: "{bad}Back"
+  tooltip: "Close without changing the team bank."
+  icon: "iron_door"
+body-width: 300
+input-width: 300
+button-width: 100
+max-length: 32
+label-visible: true
+can-close-with-escape: true
+pause: false
+columns: 3

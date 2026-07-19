@@ -1,0 +1,124 @@
+# Need help or want support? Join the Discord: https://discord.gg/kEF77QCfu7
+
+# Team limits.
+max-members-per-team: 30
+default-members-per-team: 20
+max-warps-per-team: 3
+max-team-name-length: 12
+max-team-tag-length: 4
+invite-expiry-seconds: 300
+
+# Seconds players must stand still before /team home and /team warp teleport them.
+# Set to 0 to teleport instantly.
+teleport-delay-seconds: 3
+
+# Shared team ender chest limits.
+max-team-echest-rows: 6
+default-team-echest-rows: 3
+
+# Team PvP protection defaults. If force-disable-all is true, all teams are protected and cannot toggle it.
+team-pvp-default-enabled: true
+team-pvp-force-disable-all: false
+
+# Upgrade prices use: next cost = base * multiplier^(current upgrade count).
+upgrade-costs:
+  team-size:
+    base: 250000.0
+    multiplier: 1.35
+  echest:
+    base: 10000000.0
+    multiplier: 1.5
+
+# Team level integration. Requires FoLevels to be installed and enabled.
+# Existing teams are kept intact; old databases get team_level and team_xp columns added automatically.
+team-level:
+  # Enables team XP gain from FoLevels XP events.
+  enabled: false
+
+  # Sends team-level-xp-gained to the player who earned XP.
+  show-xp-gain: false
+
+  # How often dirty team_level/team_xp changes are saved.
+  # Minimum effective value is 5 seconds. Full team saves still happen on shutdown/reload.
+  autosave-seconds: 30
+
+  formula:
+    # XP required for a level 1 team to reach level 2.
+    base-required-xp: 500.0
+
+    # Required XP is multiplied by this value for each later level.
+    multiplier: 1.35
+
+    # 0 means no level cap.
+    max-level: 0
+
+  rewards:
+    # Copy this block and change the number to add rewards for another level.
+    2:
+      # Messages sent to all online team members when this level is reached.
+      messages: []
+
+      # Console commands run once when this level is reached.
+      # Placeholders: {team}, {team_id}, {level}, {xp}, {current}, {required}, {source}, {source_uuid}, {reason}, {source_key}, {owner}
+      console-commands: []
+
+      # Console commands run once for each online team member.
+      # Adds per-member placeholders: {player}, {player_uuid}
+      member-commands: []
+
+# Admin GUI permissions.
+allow-admin-diplomacy-management: true
+allow-admin-echest-access: true
+
+# Score settings for kill-based team score.
+score:
+  count-friendly-kills: false
+  count-ally-kills: false
+  prevent-repeat-farming-window-seconds: 120
+
+# Bukkit sound names used by UI and command feedback.
+sounds:
+  gui-open: UI_BUTTON_CLICK
+  success: ENTITY_EXPERIENCE_ORB_PICKUP
+  failure: ENTITY_VILLAGER_NO
+  teleport: ENTITY_ENDERMAN_TELEPORT
+
+# Team chat formats.
+chat:
+  team-format: "{prefix}{theme}[TEAM] {white}{player} {muted}» {white}{message}"
+  ally-format: "{prefix}{theme}[ALLY] {white}{team} {muted}| {white}{player} {muted}» {white}{message}"
+  spy-format: "{prefix}{bad}[SPY] {white}{channel} {muted}| {white}{player} {muted}» {white}{message}"
+  global-toggle-reminder: true
+  prefix-shortcuts-enabled: true
+
+# PlaceholderAPI fallback output.
+placeholders:
+  no-team: "-"
+  no-rank: "-"
+
+# Uses Minecraft's native dialog/input screens for search and text/number input when supported.
+# Requires a compatible Paper or Paper-fork server with the Dialog API.
+# Spigot and older versions automatically fall back to inventory/chat GUI mode.
+native-dialogs:
+  # Set this to false to always use inventory/chat GUI mode.
+  enabled: true
+
+  # Sends admins a short warning when native dialogs are enabled but unavailable and the plugin falls back.
+  warn-on-fallback: true
+
+# GUI materials and inventory titles.
+gui:
+  filler-material: GRAY_STAINED_GLASS_PANE
+  confirm-material: LIME_DYE
+  cancel-material: RED_DYE
+  titles:
+    dashboard: "FoTeams"
+    settings: "Team Settings"
+    members: "Members"
+    warps: "Warps"
+    info: "Team Info"
+    relations: "Relations"
+    browser: "Team Browser"
+    editor: "Team Editor"
+    confirm: "Confirm"
+    upgrades: "Team Upgrades"

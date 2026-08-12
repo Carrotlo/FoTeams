@@ -3,6 +3,7 @@ package me.foesio.foTeams.listener;
 import me.foesio.foTeams.FoTeams;
 import me.foesio.foTeams.gui.FoGui;
 import me.foesio.foTeams.gui.SharedChestHolder;
+import me.foesio.core.gui.EntryBrowserHolder;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -20,15 +21,25 @@ public final class GuiListener implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {
-        if (event.getInventory().getHolder() instanceof FoGui gui) {
+        Inventory topInventory = event.getView().getTopInventory();
+        if (topInventory.getHolder() instanceof EntryBrowserHolder holder) {
             event.setCancelled(true);
-            if (event.getRawSlot() < 0 || event.getRawSlot() >= event.getInventory().getSize()) {
+            if (event.getRawSlot() < 0 || event.getRawSlot() >= topInventory.getSize()) {
+                return;
+            }
+            if (event.getWhoClicked() instanceof Player player) {
+                plugin.getGuiService().handleEntryBrowserClick(player, event.getRawSlot(), event.getClick(), holder);
+            }
+            return;
+        }
+        if (topInventory.getHolder() instanceof FoGui gui) {
+            event.setCancelled(true);
+            if (event.getRawSlot() < 0 || event.getRawSlot() >= topInventory.getSize()) {
                 return;
             }
             gui.click(event);
             return;
         }
-        Inventory topInventory = event.getView().getTopInventory();
         if (topInventory.getHolder() instanceof SharedChestHolder holder) {
             plugin.getGuiService().queueSharedChestSave(holder);
         }
@@ -37,6 +48,15 @@ public final class GuiListener implements Listener {
     @EventHandler
     public void onDrag(InventoryDragEvent event) {
         Inventory topInventory = event.getView().getTopInventory();
+        if (topInventory.getHolder() instanceof EntryBrowserHolder) {
+            for (int rawSlot : event.getRawSlots()) {
+                if (rawSlot >= 0 && rawSlot < topInventory.getSize()) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+            return;
+        }
         if (!(topInventory.getHolder() instanceof SharedChestHolder holder)) {
             return;
         }

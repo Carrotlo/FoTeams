@@ -8,6 +8,10 @@ import me.foesio.core.sound.SoundTypes;
 import me.foesio.core.text.FoText;
 import me.foesio.core.text.PromptNormalizer;
 import me.foesio.core.editor.EditorItemFactory;
+import me.foesio.core.gui.EntryBrowserClick;
+import me.foesio.core.gui.EntryBrowserHolder;
+import me.foesio.core.gui.EntryBrowserMenus;
+import me.foesio.core.gui.EntryBrowserRequest;
 import me.foesio.foTeams.FoTeams;
 import me.foesio.foTeams.input.BalanceDialogAction;
 import me.foesio.foTeams.input.BalanceDialogRequest;
@@ -814,86 +818,38 @@ public final class GuiService {
                 .filter(candidate -> matchesTeamSearch(candidate, normalizedSearch))
                 .sorted(Comparator.comparing(Team::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
-        int rows = pagedRows(teams.size());
-        List<Integer> contentSlots = pagedContentSlots(rows);
-        int pageSize = contentSlots.size();
-        int maxPage = teams.isEmpty() ? 0 : (teams.size() - 1) / pageSize;
-        int currentPage = Math.max(0, Math.min(page, maxPage));
-        int start = currentPage * pageSize;
+        List<EntryBrowserRequest.Entry> entries = new ArrayList<>(teams.size());
+        for (Team other : teams) {
+            RelationType relation = plugin.getTeamService().relation(team, other);
+            boolean incoming = plugin.getTeamService().hasIncomingAllyRequest(team, other);
+            Material material = relation == RelationType.ALLY ? Material.LIME_WOOL
+                    : relation == RelationType.ENEMY ? Material.RED_WOOL
+                    : (relation == RelationType.ALLY_REQUEST || incoming) ? Material.YELLOW_WOOL
+                    : Material.GRAY_WOOL;
+            String status = relation == RelationType.ALLY ? "ally"
+                    : relation == RelationType.ENEMY ? "enemy"
+                    : incoming ? "ally request received"
+                    : relation == RelationType.ALLY_REQUEST ? "ally request sent"
+                    : "neutral";
+            entries.add(EntryBrowserRequest.Entry.of(String.valueOf(other.getId()), item(material, accent(other.getName()), List.of(
+                    "#ffffffStatus: " + status,
+                    "#ffffffLeft: ally | Right: enemy | Shift-right: clear"))));
+        }
 
-        FoGui gui = gui(rows * 9, plugin.getConfig().getString("gui.titles.relations", "Relations"));
-        fill(gui);
-        gui.getInventory().setItem(4, item(Material.LEAD, accent("Relations"), List.of(
-                "#ffffffLeft-click: ally",
-                "#ffffffRight-click: enemy",
-                normalizedSearch.isBlank() ? "#ffffffSearch: #a7b8b0None" : "#ffffffSearch: #03fc88" + normalizedSearch,
-                "#ffffffShift-right: clear")));
-        if (teams.isEmpty()) {
-            gui.getInventory().setItem(13, item(Material.BARRIER, "#ff5d73No Teams Found", normalizedSearch.isBlank()
-                    ? List.of("#ffffffThere are no other teams to manage.")
-                    : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch)));
-        } else {
-            for (int index = 0; index < contentSlots.size(); index++) {
-                int teamIndex = start + index;
-                if (teamIndex >= teams.size()) {
-                    break;
-                }
-                Team other = teams.get(teamIndex);
-                int slot = contentSlots.get(index);
-                RelationType relation = plugin.getTeamService().relation(team, other);
-                boolean incoming = plugin.getTeamService().hasIncomingAllyRequest(team, other);
-                Material material = relation == RelationType.ALLY ? Material.LIME_WOOL
-                        : relation == RelationType.ENEMY ? Material.RED_WOOL
-                        : (relation == RelationType.ALLY_REQUEST || incoming) ? Material.YELLOW_WOOL
-                        : Material.GRAY_WOOL;
-                String status = relation == RelationType.ALLY ? "ally"
-                        : relation == RelationType.ENEMY ? "enemy"
-                        : incoming ? "ally request received"
-                        : relation == RelationType.ALLY_REQUEST ? "ally request sent"
-                        : "neutral";
-                gui.getInventory().setItem(slot, item(material, accent(other.getName()), List.of(
-                        "#ffffffStatus: " + status,
-                        "#ffffffLeft: ally | Right: enemy | Shift-right: clear")));
-                gui.setAction(slot, event -> mutate(player, team, adminView, TeamAction.MANAGE_RELATIONS, () -> {
-                    if (event.getClick().isShiftClick()) {
-                        plugin.getTeamService().clearRelation(team, other);
-                        plugin.getMessages().send(player, "relation-cleared", Map.of("{other}", other.getName()));
-                    } else if (event.getClick() == ClickType.LEFT) {
-                        boolean accepted = plugin.getTeamService().requestOrAcceptAlly(team, other);
-                        plugin.getMessages().send(player, accepted ? "ally-request-accepted" : "ally-request-sent", Map.of("{other}", other.getName()));
-                        if (!accepted) {
-                            notifyTeamLeaders(other, "ally-request-received", Map.of("{other}", team.getName()));
-                        }
-                    } else if (event.getClick() == ClickType.RIGHT) {
-                        plugin.getTeamService().setEnemy(team, other);
-                        plugin.getMessages().send(player, "relation-updated", Map.of("{other}", other.getName(), "{relation}", "enemy"));
-                    }
-                    openRelations(player, team, adminView, currentPage, normalizedSearch, adminContext);
-                }));
-            }
-        }
-        int lastRowStart = gui.getInventory().getSize() - 9;
-        if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
-            gui.setAction(lastRowStart, event -> openRelations(player, team, adminView, currentPage - 1, normalizedSearch, adminContext));
-        }
-        gui.getInventory().setItem(lastRowStart + 3, searchButton(normalizedSearch));
-        gui.setAction(lastRowStart + 3, event -> promptRelationTeamSearch(player, team, adminView, normalizedSearch, adminContext));
-        setBackButton(gui, () -> openSettings(player, team, adminView, adminContext));
-        if (!normalizedSearch.isBlank()) {
-            gui.getInventory().setItem(lastRowStart + 5, clearSearchButton("relations"));
-            gui.setAction(lastRowStart + 5, event -> {
-                plugin.getMessages().send(player, "editor-search-cleared");
-                openRelations(player, team, adminView, 0, "", adminContext);
-            });
-        }
-        if (start + pageSize < teams.size()) {
-            int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
-            gui.setAction(nextSlot, event -> openRelations(player, team, adminView, currentPage + 1, normalizedSearch, adminContext));
-        }
-        player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        ItemStack emptyItem = item(Material.PAPER, "#ff5d73No Teams Found", normalizedSearch.isBlank()
+                ? List.of("#ffffffThere are no other teams to manage.")
+                : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch));
+        EntryBrowserMenus.open(player, EntryBrowserRequest.builder()
+                .title(plugin.getConfig().getString("gui.titles.relations", "Relations"))
+                .entries(entries)
+                .page(page)
+                .filter(normalizedSearch)
+                .buttons(buttons)
+                .showBack(true)
+                .withoutAddButton()
+                .emptyItem(emptyItem)
+                .context(new RelationsBrowserContext(team.getId(), adminView, adminContext))
+                .build());
     }
 
     public void openInfo(Player viewer, Team team) {
@@ -990,76 +946,131 @@ public final class GuiService {
 
     public void openBrowser(Player player, int page, String search) {
         String normalizedSearch = normalizeSearch(search);
-        FoGui gui = gui(54, plugin.getConfig().getString("gui.titles.browser", "Browser"));
-        fill(gui);
         List<Team> teams = plugin.getTeamService().teams().stream()
                 .filter(team -> matchesTeamSearch(team, normalizedSearch))
                 .sorted(Comparator.comparing(Team::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
-        int maxPage = teams.isEmpty() ? 0 : (teams.size() - 1) / EDITOR_CONTENT_SLOTS.length;
-        int currentPage = Math.max(0, page);
-        int start = Math.max(0, currentPage * EDITOR_CONTENT_SLOTS.length);
-        if (start >= teams.size() && currentPage > 0) {
-            currentPage = Math.max(0, (teams.size() - 1) / EDITOR_CONTENT_SLOTS.length);
-            start = currentPage * EDITOR_CONTENT_SLOTS.length;
-        }
-        int pageForActions = currentPage;
-        for (int index = start; index < Math.min(teams.size(), start + EDITOR_CONTENT_SLOTS.length); index++) {
-            Team team = teams.get(index);
-            int slot = EDITOR_CONTENT_SLOTS[index - start];
-            gui.getInventory().setItem(slot, item(Material.BOOK, accent(team.getName()), List.of(
+        List<EntryBrowserRequest.Entry> entries = new ArrayList<>(teams.size());
+        for (Team team : teams) {
+            entries.add(EntryBrowserRequest.Entry.of(String.valueOf(team.getId()), item(Material.BOOK, accent(team.getName()), List.of(
                     "#ffffffTag: " + tag(team),
                     "#ffffffOwner: " + playerName(team.getOwnerId()),
                     "#ffffffScore: " + team.getScore(),
-                    "#ffffffBalance: " + Text.money(team.getBalance()))));
-            int browserPage = currentPage;
-            gui.setAction(slot, event -> openAdminEditor(player, team, normalizedSearch, browserPage));
+                    "#ffffffBalance: " + Text.money(team.getBalance())))));
         }
-        if (teams.isEmpty()) {
-            gui.getInventory().setItem(22, item(Material.BARRIER, "#ff5d73No Teams Found", normalizedSearch.isBlank()
-                    ? List.of("#ffffffNo teams have been created yet.")
-                    : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch)));
+        EntryBrowserMenus.open(player, EntryBrowserRequest.builder()
+                .title(plugin.getConfig().getString("gui.titles.browser", "Browser"))
+                .entries(entries)
+                .page(page)
+                .filter(normalizedSearch)
+                .buttons(buttons)
+                .showBack(true)
+                .addButton(item(Material.ANVIL, "#03fc88Create Team", List.of("#ffffffCreate a team without an owner.")))
+                .build());
+    }
+
+    public void handleEntryBrowserClick(Player player, int slot, EntryBrowserHolder holder) {
+        handleEntryBrowserClick(player, slot, null, holder);
+    }
+
+    public void handleEntryBrowserClick(Player player, int slot, ClickType clickType, EntryBrowserHolder holder) {
+        EntryBrowserClick click = EntryBrowserMenus.handleClick(slot, holder, clickType);
+        if (holder.request().context() instanceof RelationsBrowserContext context) {
+            handleRelationsBrowserClick(player, click, holder, context);
+            return;
         }
-        setBackButton(gui, () -> openEditorHome(player));
-        if (currentPage > 0) {
-            int previousPage = currentPage - 1;
-            gui.getInventory().setItem(46, previousPageButton(previousPage, maxPage));
-            gui.setAction(46, event -> openBrowser(player, previousPage, normalizedSearch));
-        }
-        gui.getInventory().setItem(48, searchButton(normalizedSearch));
-        gui.setAction(48, event -> promptTeamSearch(player, normalizedSearch));
-        gui.getInventory().setItem(51, item(Material.ANVIL, "#03fc88Create Team", List.of("#ffffffCreate a team without an owner.")));
-        gui.setAction(51, event -> promptText(player, "prompt-name", input -> {
-            try {
-                if (!validateTeamName(player, input)) {
-                    return;
+        String search = holder.request().filter();
+        switch (click.action()) {
+            case ENTRY -> {
+                try {
+                    int teamId = Integer.parseInt(click.entryId());
+                    plugin.getTeamService().byId(teamId).ifPresent(team ->
+                            openAdminEditor(player, team, search, holder.request().page()));
+                } catch (NumberFormatException ignored) {
+                    openBrowser(player, holder.request().page(), search);
                 }
-                if (plugin.getTeamService().isNameTaken(input)) {
-                    plugin.getMessages().send(player, "team-name-taken");
-                    return;
-                }
-                Team team = plugin.getTeamService().createOwnerlessTeam(input);
-                openAdminEditor(player, team, normalizedSearch, pageForActions);
-            } catch (SQLException exception) {
-                plugin.getLogger().log(Level.WARNING, "Failed to create ownerless team from editor.", exception);
-                plugin.getMessages().send(player, "team-create-failed");
             }
-        }));
-        if (!normalizedSearch.isBlank()) {
-            gui.getInventory().setItem(50, clearSearchButton("teams"));
-            gui.setAction(50, event -> {
+            case ADD -> promptText(player, "prompt-name", input -> {
+                try {
+                    if (!validateTeamName(player, input)) {
+                        return;
+                    }
+                    if (plugin.getTeamService().isNameTaken(input)) {
+                        plugin.getMessages().send(player, "team-name-taken");
+                        return;
+                    }
+                    Team team = plugin.getTeamService().createOwnerlessTeam(input);
+                    openAdminEditor(player, team, search, holder.request().page());
+                } catch (SQLException exception) {
+                    plugin.getLogger().log(Level.WARNING, "Failed to create ownerless team from editor.", exception);
+                    plugin.getMessages().send(player, "team-create-failed");
+                }
+            });
+            case BACK -> openEditorHome(player);
+            case SEARCH -> promptTeamSearch(player, search);
+            case CLEAR_SEARCH -> {
                 plugin.getMessages().send(player, "editor-search-cleared");
                 openBrowser(player, 0, "");
-            });
+            }
+            case PREVIOUS_PAGE -> openBrowser(player, holder.request().page() - 1, search);
+            case NEXT_PAGE -> openBrowser(player, holder.request().page() + 1, search);
+            case NONE -> {
+                // Filler and inactive navigation slots intentionally do nothing.
+            }
         }
-        if (start + EDITOR_CONTENT_SLOTS.length < teams.size()) {
-            int nextPage = currentPage + 1;
-            gui.getInventory().setItem(52, nextPageButton(nextPage, maxPage));
-            gui.setAction(52, event -> openBrowser(player, nextPage, normalizedSearch));
+    }
+
+    private void handleRelationsBrowserClick(Player player, EntryBrowserClick click, EntryBrowserHolder holder,
+                                             RelationsBrowserContext context) {
+        Team team = plugin.getTeamService().byId(context.teamId()).orElse(null);
+        if (team == null) {
+            plugin.getMessages().send(player, "action-failed");
+            return;
         }
-        gui.getInventory().setItem(53, emptyInfoPane());
-        player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        String search = holder.request().filter();
+        switch (click.action()) {
+            case ENTRY -> {
+                Team other = parseTeamEntry(click.entryId());
+                if (other == null || other.getId() == team.getId()) {
+                    return;
+                }
+                mutate(player, team, context.adminView(), TeamAction.MANAGE_RELATIONS, () -> {
+                    if (click.clickType() != null && click.clickType().isShiftClick()) {
+                        plugin.getTeamService().clearRelation(team, other);
+                        plugin.getMessages().send(player, "relation-cleared", Map.of("{other}", other.getName()));
+                    } else if (click.clickType() == ClickType.LEFT) {
+                        boolean accepted = plugin.getTeamService().requestOrAcceptAlly(team, other);
+                        plugin.getMessages().send(player, accepted ? "ally-request-accepted" : "ally-request-sent", Map.of("{other}", other.getName()));
+                        if (!accepted) {
+                            notifyTeamLeaders(other, "ally-request-received", Map.of("{other}", team.getName()));
+                        }
+                    } else if (click.clickType() == ClickType.RIGHT) {
+                        plugin.getTeamService().setEnemy(team, other);
+                        plugin.getMessages().send(player, "relation-updated", Map.of("{other}", other.getName(), "{relation}", "enemy"));
+                    }
+                    openRelations(player, team, context.adminView(), holder.request().page(), search, context.adminContext());
+                });
+            }
+            case BACK -> openSettings(player, team, context.adminView(), context.adminContext());
+            case SEARCH -> promptRelationTeamSearch(player, team, context.adminView(), search, context.adminContext());
+            case CLEAR_SEARCH -> {
+                plugin.getMessages().send(player, "editor-search-cleared");
+                openRelations(player, team, context.adminView(), 0, "", context.adminContext());
+            }
+            case PREVIOUS_PAGE -> openRelations(player, team, context.adminView(), holder.request().page() - 1, search, context.adminContext());
+            case NEXT_PAGE -> openRelations(player, team, context.adminView(), holder.request().page() + 1, search, context.adminContext());
+            case ADD, NONE -> {
+                // The relationships browser has no add action; filler and inactive slots do nothing.
+            }
+        }
+    }
+
+    private Team parseTeamEntry(String entryId) {
+        try {
+            return plugin.getTeamService().byId(Integer.parseInt(entryId)).orElse(null);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private void openConfigCategory(Player player, String categoryId) {
@@ -2099,6 +2110,9 @@ public final class GuiService {
             browserSearch = browserSearch == null ? "" : browserSearch;
             browserPage = Math.max(0, browserPage);
         }
+    }
+
+    private record RelationsBrowserContext(int teamId, boolean adminView, AdminEditorContext adminContext) {
     }
 
     private enum ConfirmBackTarget {

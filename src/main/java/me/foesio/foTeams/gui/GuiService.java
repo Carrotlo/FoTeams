@@ -161,8 +161,6 @@ public final class GuiService {
             gui.setAction(32, event -> openSharedChest(player, team, false));
             gui.getInventory().setItem(34, item(Material.ANVIL, accent("Upgrades"), List.of("#ffffffUpgrade team size and shared chest size.")));
             gui.setAction(34, event -> openUpgrades(player, team, false));
-            gui.getInventory().setItem(40, emptyInfoPane());
-            gui.getInventory().setItem(42, emptyInfoPane());
         }
         player.openInventory(gui.getInventory());
         sound(player, "gui-open");

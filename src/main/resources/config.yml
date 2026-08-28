@@ -76,13 +76,6 @@ score:
   count-ally-kills: false
   prevent-repeat-farming-window-seconds: 120
 
-# Bukkit sound names used by UI and command feedback.
-sounds:
-  gui-open: UI_BUTTON_CLICK
-  success: ENTITY_EXPERIENCE_ORB_PICKUP
-  failure: ENTITY_VILLAGER_NO
-  teleport: ENTITY_ENDERMAN_TELEPORT
-
 # Team chat formats.
 chat:
   team-format: "{prefix}{theme}[TEAM] {white}{player} {muted}» {white}{message}"

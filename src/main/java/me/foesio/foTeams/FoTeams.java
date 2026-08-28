@@ -5,6 +5,11 @@ import me.foesio.core.FoPluginCore;
 import me.foesio.core.dialog.NativeDialogConfigDefaults;
 import me.foesio.core.message.FoMessageMigrations;
 import me.foesio.core.message.FoMessageService;
+import me.foesio.core.sound.FoAdminSounds;
+import me.foesio.core.sound.FoEditorSounds;
+import me.foesio.core.sound.FoGuiSounds;
+import me.foesio.core.sound.FoSoundMigrations;
+import me.foesio.core.sound.FoSoundService;
 import me.foesio.core.update.UpdateNoticeService;
 import me.foesio.foTeams.command.AdminCommand;
 import me.foesio.foTeams.command.TeamCommand;
@@ -77,6 +82,10 @@ public final class FoTeams extends JavaPlugin {
     private boolean placeholdersRegistered;
     private BukkitTask teamLevelAutosaveTask;
     private UpdateNoticeService updates;
+    private FoSoundService sounds;
+    private FoAdminSounds adminSounds;
+    private FoEditorSounds editorSounds;
+    private FoGuiSounds guiSounds;
 
     @Override
     public void onEnable() {
@@ -94,13 +103,17 @@ public final class FoTeams extends JavaPlugin {
     private void bootstrap() throws Exception {
         pluginConfigs = new PluginConfigs(this);
         pluginConfigs.loadAll();
-        messages = FoMessageService.load(this, messageMigrations());
         ensureAuxiliaryConfigDefaults();
         swearFilterService = new SwearFilterService(pluginConfigs.swearWords());
         core = FoPluginCore.create(this);
         core.warnIfNativeDialogsUnavailable();
+        sounds = core.createSounds(soundMigrations());
+        adminSounds = FoAdminSounds.create(sounds);
+        editorSounds = FoEditorSounds.create(sounds);
+        guiSounds = FoGuiSounds.create(sounds);
+        messages = FoMessageService.load(this, messageMigrations());
         startMetrics();
-        updates = core.createUpdateNotices(messages, "foteams").start();
+        updates = core.createUpdateNotices(messages, "foteams", adminSounds).start();
         rolePermissions = new RolePermissionService(pluginConfigs.permissions());
         database = new Database(this);
         database.connect();
@@ -227,7 +240,6 @@ public final class FoTeams extends JavaPlugin {
         reloadConfig();
         ensureConfigDefaults();
         pluginConfigs.reloadAll();
-        messages.reload();
         ensureAuxiliaryConfigDefaults();
         swearFilterService = new SwearFilterService(pluginConfigs.swearWords());
         if (inputGuiService != null) {
@@ -238,6 +250,8 @@ public final class FoTeams extends JavaPlugin {
         }
         core = FoPluginCore.create(this);
         core.warnIfNativeDialogsUnavailable();
+        sounds.reload();
+        messages.reload();
         startMetrics();
         inputGuiService = InputGuiServices.create(this, core);
         teleportDelayService = new TeleportDelayService(this);
@@ -517,5 +531,31 @@ public final class FoTeams extends JavaPlugin {
 
     public UpdateNoticeService getUpdates() {
         return updates;
+    }
+
+    public FoSoundService getSounds() {
+        return sounds;
+    }
+
+    public FoAdminSounds getAdminSounds() {
+        return adminSounds;
+    }
+
+    public FoEditorSounds getEditorSounds() {
+        return editorSounds;
+    }
+
+    public FoGuiSounds getGuiSounds() {
+        return guiSounds;
+    }
+
+    private FoSoundMigrations soundMigrations() {
+        return FoSoundMigrations.create()
+                .moveFromConfig("sounds.gui-open", "gui.open")
+                .move("team.gui-open", "gui.open")
+                .moveFromConfig("sounds.success", "team.success")
+                .moveFromConfig("sounds.failure", "team.failure")
+                .moveFromConfig("sounds.teleport", "team.teleport")
+                .build();
     }
 }

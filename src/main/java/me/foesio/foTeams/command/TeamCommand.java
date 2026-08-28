@@ -44,6 +44,11 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("Players only.");
             return true;
         }
+        if (!sender.hasPermission("foteams.use")) {
+            plugin.getMessages().send(player, "no-permission");
+            playCommandError(player);
+            return true;
+        }
         if (args.length == 0) {
             plugin.getGuiService().openDashboard(player);
             return true;
@@ -82,11 +87,15 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
                 case "baltop" -> balanceTop(player);
                 case "deposit" -> deposit(player, args);
                 case "withdraw" -> withdraw(player, args);
-                default -> help(player);
+                default -> {
+                    playCommandError(player);
+                    yield help(player);
+                }
             };
         } catch (SQLException exception) {
             plugin.getLogger().log(Level.WARNING, "Team command failed.", exception);
             plugin.getMessages().send(player, "command-failed");
+            playCommandError(player);
             return true;
         }
     }
@@ -99,10 +108,12 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     private boolean create(Player player, String[] args) throws SQLException {
         if (plugin.getTeamService().teamOf(player.getUniqueId()).isPresent()) {
             plugin.getMessages().send(player, "already-in-team");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-create");
+            playCommandError(player);
             return true;
         }
         String name = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
@@ -111,9 +122,11 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (plugin.getTeamService().isNameTaken(name)) {
             plugin.getMessages().send(player, "team-name-taken");
+            playCommandError(player);
             return true;
         }
         Team team = plugin.getTeamService().createTeam(player, name);
+        plugin.getSounds().play(player, "team.created");
         plugin.getMessages().send(player, "team-created", Map.of("{team}", team.getName()));
         return true;
     }
@@ -121,14 +134,17 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     private boolean validateTeamName(Player player, String name) {
         if (!plugin.getTeamService().isValidTeamNameCharacters(name)) {
             plugin.getMessages().send(player, "name-invalid");
+            playCommandError(player);
             return false;
         }
         if (!plugin.getTeamService().isValidTeamNameLength(name)) {
             plugin.getMessages().send(player, "name-too-long", Map.of("{max}", String.valueOf(plugin.getTeamService().maxNameLength())));
+            playCommandError(player);
             return false;
         }
         if (plugin.getSwearFilterService().containsBlockedWord(name)) {
             plugin.getMessages().send(player, "blocked-word");
+            playCommandError(player);
             return false;
         }
         return true;
@@ -141,51 +157,63 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.INVITE)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-invite");
+            playCommandError(player);
             return true;
         }
         Player target = resolveOnlinePlayer(args[1]);
         if (target == null) {
             plugin.getMessages().send(player, "player-not-found");
+            playCommandError(player);
             return true;
         }
         if (plugin.getTeamService().teamOf(target.getUniqueId()).isPresent()) {
             plugin.getMessages().send(player, "player-already-in-team");
+            playCommandError(player);
             return true;
         }
         plugin.getTeamService().invite(team, player.getUniqueId(), target.getUniqueId());
+        plugin.getSounds().play(player, "team.invite");
         plugin.getMessages().send(player, "invite-sent", Map.of("{player}", target.getName(), "{team}", team.getName()));
         plugin.getMessages().send(target, "invite-received", Map.of("{team}", team.getName()));
+        plugin.getSounds().play(target, "team.invited");
         return true;
     }
 
     private boolean join(Player player, String[] args) throws SQLException {
         if (plugin.getTeamService().teamOf(player.getUniqueId()).isPresent()) {
             plugin.getMessages().send(player, "already-in-team");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-join");
+            playCommandError(player);
             return true;
         }
         String teamName = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
         Team team = plugin.getTeamService().byName(teamName).orElse(null);
         if (team == null) {
             plugin.getMessages().send(player, "team-not-found");
+            playCommandError(player);
             return true;
         }
         if (!plugin.getTeamService().hasInvite(player.getUniqueId(), team.getId())) {
             plugin.getMessages().send(player, "no-invite");
+            playCommandError(player);
             return true;
         }
         if (plugin.getTeamService().isFull(team)) {
             plugin.getMessages().send(player, "team-full");
+            playCommandError(player);
             return true;
         }
         plugin.getTeamService().join(player, team);
+        plugin.getSounds().play(player, "team.joined");
         for (java.util.UUID memberId : plugin.getTeamService().allMembers(team)) {
             Player target = Bukkit.getPlayer(memberId);
             if (target != null) {
@@ -202,13 +230,16 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (team.roleOf(player.getUniqueId()) == TeamRole.OWNER) {
             plugin.getMessages().send(player, "owner-use-disband");
+            playCommandError(player);
             return true;
         }
         try {
             plugin.getTeamService().leave(player);
+            plugin.getSounds().play(player, "team.left");
             plugin.getMessages().send(player, "leave-success", Map.of("{team}", team.getName()));
         } catch (IllegalStateException exception) {
             plugin.getMessages().send(player, "leave-failed");
+            playCommandError(player);
         }
         return true;
     }
@@ -220,6 +251,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!canManageInvites(team, player)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         List<TeamInvite> invites = plugin.getTeamService().teamInvites(team);
@@ -242,18 +274,22 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!canManageInvites(team, player)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-revoke");
+            playCommandError(player);
             return true;
         }
         MemberTarget target = resolveTeamInvite(team, args[1]).orElse(null);
         if (target == null || !plugin.getTeamService().revokeInvite(team, target.id())) {
             plugin.getMessages().send(player, "no-invite");
+            playCommandError(player);
             return true;
         }
         plugin.getMessages().send(player, "invite-revoked", Map.of("{player}", target.name(), "{team}", team.getName()));
+        plugin.getSounds().play(player, "team.invite-revoked");
         Player online = Bukkit.getPlayer(target.id());
         if (online != null) {
             plugin.getMessages().send(online, "invite-revoked-target", Map.of("{team}", team.getName()));
@@ -268,6 +304,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.DISBAND)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         plugin.getGuiService().openConfirm(player, team, false);
@@ -281,6 +318,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!canManageTeamPvp(team, player)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (plugin.getConfig().getBoolean("team-pvp-force-disable-all", false)) {
@@ -288,6 +326,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
                     "{prefix}{bad}Team PvP setting is locked while {white}team-pvp-force-disable-all{bad} is true. Teammates can always damage each other.",
                     Map.of()
             ));
+            playCommandError(player);
             return true;
         }
         boolean enabled;
@@ -295,6 +334,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
             Boolean parsed = parseToggleState(args[1]);
             if (parsed == null) {
                 plugin.getMessages().send(player, "usage-pvp");
+                playCommandError(player);
                 return true;
             }
             enabled = parsed;
@@ -303,9 +343,11 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().setTeamPvpProtection(team, enabled)) {
             plugin.getMessages().send(player, enabled ? "pvp-protection-already-enabled" : "pvp-protection-already-disabled");
+            playCommandError(player);
             return true;
         }
         broadcastTeamMessage(team, enabled ? "pvp-protection-enabled" : "pvp-protection-disabled");
+        plugin.getSounds().play(player, "team.settings-saved");
         return true;
     }
 
@@ -316,27 +358,33 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.KICK)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-kick");
+            playCommandError(player);
             return true;
         }
         MemberTarget target = resolveTeamMember(team, args[1]).orElse(null);
         if (target == null) {
             plugin.getMessages().send(player, "player-not-found");
+            playCommandError(player);
             return true;
         }
         TeamRole role = target.role();
         if (role == TeamRole.OWNER) {
             plugin.getMessages().send(player, "member-owner-protected");
+            playCommandError(player);
             return true;
         }
         if (role == null) {
             plugin.getMessages().send(player, "kick-target-invalid");
+            playCommandError(player);
             return true;
         }
         plugin.getTeamService().kick(team, target.id());
+        plugin.getSounds().play(player, "team.member-updated");
         plugin.getMessages().send(player, "kick-success", Map.of("{player}", target.name()));
         Player targetOnline = Bukkit.getPlayer(target.id());
         if (targetOnline != null) {
@@ -352,31 +400,38 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.PROMOTE)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-promote");
+            playCommandError(player);
             return true;
         }
         MemberTarget target = resolveTeamMember(team, args[1]).orElse(null);
         if (target == null) {
             plugin.getMessages().send(player, "player-not-found");
+            playCommandError(player);
             return true;
         }
         TeamRole role = target.role();
         if (role == TeamRole.OWNER) {
             plugin.getMessages().send(player, "member-owner-protected");
+            playCommandError(player);
             return true;
         }
         if (role != TeamRole.MEMBER) {
             plugin.getMessages().send(player, "promote-target-invalid");
+            playCommandError(player);
             return true;
         }
         if (!plugin.getTeamService().promote(team, target.id())) {
             plugin.getMessages().send(player, "admin-limit", Map.of("{max}", String.valueOf(plugin.getTeamService().maxAdmins())));
+            playCommandError(player);
             return true;
         }
         plugin.getMessages().send(player, "promote-success", Map.of("{player}", target.name(), "{role}", "admin"));
+        plugin.getSounds().play(player, "team.member-updated");
         return true;
     }
 
@@ -387,27 +442,33 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.DEMOTE)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-demote");
+            playCommandError(player);
             return true;
         }
         MemberTarget target = resolveTeamMember(team, args[1]).orElse(null);
         if (target == null) {
             plugin.getMessages().send(player, "player-not-found");
+            playCommandError(player);
             return true;
         }
         TeamRole role = target.role();
         if (role == TeamRole.OWNER) {
             plugin.getMessages().send(player, "member-owner-protected");
+            playCommandError(player);
             return true;
         }
         if (role != TeamRole.ADMIN) {
             plugin.getMessages().send(player, "demote-target-invalid");
+            playCommandError(player);
             return true;
         }
         plugin.getTeamService().demote(team, target.id());
+        plugin.getSounds().play(player, "team.member-updated");
         plugin.getMessages().send(player, "demote-success", Map.of("{player}", target.name(), "{role}", "member"));
         return true;
     }
@@ -432,19 +493,23 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.MANAGE_RELATIONS)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-ally");
+            playCommandError(player);
             return true;
         }
         String teamName = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
         Team other = plugin.getTeamService().byName(teamName).orElse(null);
         if (other == null || other.getId() == team.getId()) {
             plugin.getMessages().send(player, "team-not-found");
+            playCommandError(player);
             return true;
         }
         boolean accepted = plugin.getTeamService().requestOrAcceptAlly(team, other);
+        plugin.getSounds().play(player, "team.relation-updated");
         plugin.getMessages().send(player, accepted ? "ally-request-accepted" : "ally-request-sent", Map.of("{other}", other.getName()));
         if (!accepted) {
             notifyTeamLeaders(other, "ally-request-received", Map.of("{other}", team.getName()));
@@ -459,23 +524,28 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.MANAGE_RELATIONS)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-unally");
+            playCommandError(player);
             return true;
         }
         String teamName = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
         Team other = plugin.getTeamService().byName(teamName).orElse(null);
         if (other == null || other.getId() == team.getId()) {
             plugin.getMessages().send(player, "team-not-found");
+            playCommandError(player);
             return true;
         }
         if (plugin.getTeamService().relation(team, other) != RelationType.ALLY) {
             plugin.getMessages().send(player, "not-allied", Map.of("{other}", other.getName()));
+            playCommandError(player);
             return true;
         }
         plugin.getTeamService().clearRelation(team, other);
+        plugin.getSounds().play(player, "team.relation-updated");
         plugin.getMessages().send(player, "unally-success", Map.of("{other}", other.getName()));
         notifyTeamLeaders(other, "unally-received", Map.of("{other}", team.getName()));
         return true;
@@ -512,13 +582,15 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.USE_HOME)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (team.getHome() == null) {
             plugin.getMessages().send(player, "home-missing");
+            playCommandError(player);
             return true;
         }
-        plugin.getTeleportDelayService().start(player, team.getHome(), "home");
+        plugin.getTeleportDelayService().start(player, team.getHome(), "home", () -> plugin.getSounds().play(player, "team.teleport"));
         return true;
     }
 
@@ -529,9 +601,11 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.SET_HOME)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         plugin.getTeamService().setHome(team, player.getLocation());
+        plugin.getSounds().play(player, "team.home-set");
         plugin.getMessages().send(player, "home-set");
         return true;
     }
@@ -547,25 +621,29 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.USE_WARP)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         String warpName = args[1].toLowerCase(Locale.ROOT);
         var location = team.getWarps().get(warpName);
         if (location == null) {
             plugin.getMessages().send(player, "warp-missing");
+            playCommandError(player);
             return true;
         }
         if (plugin.getTeamService().warpRequiresPassword(team, warpName)) {
             if (args.length < 3) {
                 plugin.getMessages().send(player, "warp-password-required");
+                playCommandError(player);
                 return true;
             }
             if (!plugin.getTeamService().matchesWarpPassword(team, warpName, args[2])) {
                 plugin.getMessages().send(player, "warp-password-wrong");
+                playCommandError(player);
                 return true;
             }
         }
-        plugin.getTeleportDelayService().start(player, location, warpName);
+        plugin.getTeleportDelayService().start(player, location, warpName, () -> plugin.getSounds().play(player, "team.teleport"));
         return true;
     }
 
@@ -576,23 +654,28 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.SET_WARP)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-setwarp");
+            playCommandError(player);
             return true;
         }
         String warpName = args[1].toLowerCase(Locale.ROOT);
         if (warpName.isBlank()) {
             plugin.getMessages().send(player, "usage-setwarp");
+            playCommandError(player);
             return true;
         }
         String password = args.length >= 3 ? args[2] : null;
         if (!plugin.getTeamService().canAddWarp(team, warpName)) {
             plugin.getMessages().send(player, "warp-limit", Map.of("{max}", String.valueOf(plugin.getTeamService().maxWarps())));
+            playCommandError(player);
             return true;
         }
         plugin.getTeamService().setWarp(team, warpName, player.getLocation(), password);
+        plugin.getSounds().play(player, "team.warp-set");
         plugin.getMessages().send(player, "warp-set", Map.of("{warp}", warpName));
         return true;
     }
@@ -617,6 +700,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
                     .orElse(null);
             if (team == null) {
                 plugin.getMessages().send(player, plugin.getTeamService().hasKnownPlayerName(query) ? "target-not-in-team" : "team-not-found");
+                playCommandError(player);
                 return true;
             }
         }
@@ -643,6 +727,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!canManageUpgrades(team, player)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         plugin.getGuiService().openUpgrades(player, team, false);
@@ -671,6 +756,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     private boolean level(Player player, String[] args) {
         if (!plugin.getTeamLevelService().isEnabled()) {
             plugin.getTeamLevelService().sendDisabledMessage(player);
+            playCommandError(player);
             return true;
         }
         if (args.length >= 2 && args[1].equalsIgnoreCase("top")) {
@@ -713,6 +799,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getEconomyService().isEnabled()) {
             plugin.getMessages().send(player, "economy-disabled");
+            playCommandError(player);
             return true;
         }
         player.sendMessage(plugin.getMessages().renderTemplate("{prefix}{white}Team bank: {theme}" + Text.money(team.getBalance()), Map.of()));
@@ -722,6 +809,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     private boolean balanceTop(Player player) {
         if (!plugin.getEconomyService().isEnabled()) {
             plugin.getMessages().send(player, "economy-disabled");
+            playCommandError(player);
             return true;
         }
         player.sendMessage(plugin.getMessages().renderTemplate("{prefix}{theme}Top Team Balances", Map.of()));
@@ -740,14 +828,17 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getEconomyService().isEnabled()) {
             plugin.getMessages().send(player, "economy-disabled");
+            playCommandError(player);
             return true;
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.DEPOSIT)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-deposit");
+            playCommandError(player);
             return true;
         }
         Double amount = parseAmount(player, args[1]);
@@ -760,18 +851,22 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     public boolean depositAmount(Player player, Team team, double amount) {
         if (!plugin.getEconomyService().isEnabled()) {
             plugin.getMessages().send(player, "economy-disabled");
+            playCommandError(player);
             return true;
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.DEPOSIT)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (!Double.isFinite(amount) || amount <= 0) {
             plugin.getMessages().send(player, "amount-positive");
+            playCommandError(player);
             return true;
         }
         if (plugin.getEconomyService().balance(player) < amount || !plugin.getEconomyService().withdraw(player, amount)) {
             plugin.getMessages().send(player, "insufficient-funds");
+            playCommandError(player);
             return true;
         }
         try {
@@ -779,9 +874,11 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         } catch (SQLException exception) {
             if (plugin.getEconomyService().deposit(player, amount)) {
                 plugin.getMessages().send(player, "deposit-save-failed-refunded");
+                playCommandError(player);
             } else {
                 plugin.getLogger().log(Level.WARNING, "Failed to refund team deposit after database save failed for " + player.getName() + ".", exception);
                 plugin.getMessages().send(player, "deposit-save-failed-refund-failed");
+                playCommandError(player);
             }
             return true;
         }
@@ -796,14 +893,17 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         }
         if (!plugin.getEconomyService().isEnabled()) {
             plugin.getMessages().send(player, "economy-disabled");
+            playCommandError(player);
             return true;
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.WITHDRAW)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (args.length < 2) {
             plugin.getMessages().send(player, "usage-withdraw");
+            playCommandError(player);
             return true;
         }
         Double amount = parseAmount(player, args[1]);
@@ -816,18 +916,22 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     public boolean withdrawAmount(Player player, Team team, double amount) throws SQLException {
         if (!plugin.getEconomyService().isEnabled()) {
             plugin.getMessages().send(player, "economy-disabled");
+            playCommandError(player);
             return true;
         }
         if (!plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.WITHDRAW)) {
             plugin.getMessages().send(player, "no-permission-role");
+            playCommandError(player);
             return true;
         }
         if (!Double.isFinite(amount) || amount <= 0) {
             plugin.getMessages().send(player, "amount-positive");
+            playCommandError(player);
             return true;
         }
         if (team.getBalance() < amount) {
             plugin.getMessages().send(player, "insufficient-team-funds");
+            playCommandError(player);
             return true;
         }
         plugin.getTeamService().withdraw(team, amount);
@@ -838,6 +942,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
                 plugin.getLogger().log(Level.WARNING, "Failed to restore team balance after economy payout failed for " + player.getName() + ".", exception);
             }
             plugin.getMessages().send(player, "economy-transaction-failed");
+            playCommandError(player);
             return true;
         }
         plugin.getMessages().send(player, "withdraw-success", Map.of("{amount}", Text.money(amount)));
@@ -848,6 +953,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         var parsed = LargeNumberParser.parseDouble(input);
         if (parsed.isEmpty()) {
             plugin.getMessages().send(player, "money-invalid");
+            playCommandError(player);
             return null;
         }
         return parsed.getAsDouble();
@@ -857,6 +963,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         Optional<Team> optionalTeam = plugin.getTeamService().teamOf(player.getUniqueId());
         if (optionalTeam.isEmpty()) {
             plugin.getMessages().send(player, "not-in-team");
+            playCommandError(player);
             return null;
         }
         return optionalTeam.get();
@@ -1061,6 +1168,10 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
 
     private String normalizePlayerLookup(String input) {
         return input == null ? "" : input.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void playCommandError(Player player) {
+        plugin.getAdminSounds().updateError(player);
     }
 
     private String withoutBedrockPrefix(String input) {

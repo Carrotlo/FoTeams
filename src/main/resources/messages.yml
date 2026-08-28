@@ -32,6 +32,7 @@ help-admin:
   - "{prefix}{white}/teamadmin reload {muted}- reload configs"
   - "{prefix}{white}/teamadmin version {muted}- show plugin version"
   - "{prefix}{white}/teamadmin chatspy {muted}- toggle team chat spy"
+no-permission: "{prefix}{bad}You do not have permission."
 team-created: "{prefix}{good}Created team {theme}{team}{good}."
 team-disbanded: "{prefix}{bad}Disbanded team {theme}{team}{bad}."
 team-deleted: "{prefix}{bad}Deleted team {theme}{team}{bad}."

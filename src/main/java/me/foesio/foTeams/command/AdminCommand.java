@@ -22,6 +22,11 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!sender.hasPermission("foteams.admin")) {
+            plugin.getMessages().send(sender, "no-permission");
+            plugin.getAdminSounds().updateError(sender);
+            return true;
+        }
         if (args.length == 0) {
             plugin.getMessages().sendList(sender, "help-admin");
             return true;
@@ -39,6 +44,7 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
         } catch (Exception exception) {
             plugin.getLogger().log(Level.WARNING, "Admin command failed: " + sub, exception);
             plugin.getMessages().send(sender, "invalid-input");
+            plugin.getAdminSounds().updateError(sender);
             return true;
         }
     }
@@ -52,8 +58,14 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
         try {
             plugin.reloadPlugin();
             plugin.getMessages().send(sender, "reload-success");
+            if (sender instanceof Player player) {
+                plugin.getAdminSounds().reload(player);
+            }
         } catch (Exception exception) {
             plugin.getLogger().log(Level.WARNING, "Reload command failed.", exception);
+            if (sender instanceof Player player) {
+                plugin.getAdminSounds().reloadError(player);
+            }
             sender.sendMessage("Reload failed: " + exception.getMessage());
         }
         return true;
@@ -78,6 +90,7 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
         Team team = plugin.getTeamService().byName(teamName).orElse(null);
         if (team == null) {
             plugin.getMessages().send(player, "team-not-found");
+            plugin.getAdminSounds().updateError(player);
             return true;
         }
         plugin.getGuiService().openAdminEditor(player, team);

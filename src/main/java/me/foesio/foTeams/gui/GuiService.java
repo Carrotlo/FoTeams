@@ -4,7 +4,6 @@ import me.foesio.core.gui.GuiButtonConfig;
 import me.foesio.core.gui.GuiTitles;
 import me.foesio.core.item.FoItemStacks;
 import me.foesio.core.number.LargeNumberParser;
-import me.foesio.core.sound.SoundTypes;
 import me.foesio.core.text.FoText;
 import me.foesio.core.text.PromptNormalizer;
 import me.foesio.core.editor.EditorItemFactory;
@@ -29,7 +28,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
@@ -49,6 +47,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public final class GuiService {
@@ -59,6 +58,8 @@ public final class GuiService {
     private final GuiButtonConfig buttons = GuiButtonConfig.defaults();
     private final Map<Integer, SharedChestHolder> sharedChests = new HashMap<>();
     private final Set<SharedChestHolder> pendingSharedChestSaves = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<UUID, ScreenState> activeScreens = new ConcurrentHashMap<>();
+    private final Set<UUID> pendingBackNavigations = ConcurrentHashMap.newKeySet();
     private final List<ConfigCategory> configCategories;
 
     public GuiService(FoTeams plugin) {
@@ -87,6 +88,17 @@ public final class GuiService {
         plugin.getCore().inventoryCloseSuppressor().clearLater(plugin, player, ticks);
     }
 
+    public void clearScreenTrackingIfClosed(Player player) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Inventory inventory = player.getOpenInventory().getTopInventory();
+            Object holder = inventory.getHolder();
+            if (!(holder instanceof FoGui) && !(holder instanceof EntryBrowserHolder) && !(holder instanceof SharedChestHolder)) {
+                activeScreens.remove(player.getUniqueId());
+                pendingBackNavigations.remove(player.getUniqueId());
+            }
+        });
+    }
+
     public void openDashboard(Player player) {
         Optional<Team> optionalTeam = plugin.getTeamService().teamOf(player.getUniqueId());
         FoGui gui = gui(optionalTeam.isEmpty() ? 27 : 45, plugin.getConfig().getString("gui.titles.dashboard", "FoTeams"));
@@ -103,6 +115,7 @@ public final class GuiService {
                         return;
                     }
                     Team created = plugin.getTeamService().createTeam(player, input);
+                    sound(player, "created");
                     plugin.getMessages().send(player, "team-created", Map.of("{team}", created.getName()));
                     openDashboard(player);
                 } catch (Exception exception) {
@@ -120,6 +133,7 @@ public final class GuiService {
                     if (team != null) {
                         try {
                             plugin.getTeamService().join(player, team);
+                            sound(player, "joined");
                             broadcastTeamMessage(team, "member-joined", Map.of("{player}", player.getName(), "{team}", team.getName()));
                             openDashboard(player);
                         } catch (IllegalStateException exception) {
@@ -163,7 +177,7 @@ public final class GuiService {
             gui.setAction(34, event -> openUpgrades(player, team, false));
         }
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, false);
     }
 
     private void openBalanceDialog(Player player, Team team) {
@@ -386,6 +400,7 @@ public final class GuiService {
                     return;
                 }
                 broadcastTeamMessage(team, enabled ? "pvp-protection-enabled" : "pvp-protection-disabled", Map.of());
+                sound(player, "settings-saved");
                 openSettings(player, team, adminView, adminContext);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to toggle PvP protection for team " + team.getId() + ".", exception);
@@ -402,7 +417,7 @@ public final class GuiService {
             }
         });
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, adminView);
     }
 
     public void openMembers(Player player, Team team, boolean adminView) {
@@ -447,7 +462,10 @@ public final class GuiService {
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
             gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
-            gui.setAction(lastRowStart, event -> openMembers(player, team, adminView, currentPage - 1, adminContext));
+            gui.setAction(lastRowStart, event -> {
+                pageSound(player, adminView, false);
+                openMembers(player, team, adminView, currentPage - 1, adminContext);
+            });
         }
         setBackButton(gui, () -> {
             if (adminView) {
@@ -459,10 +477,13 @@ public final class GuiService {
         if (start + pageSize < members.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
             gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
-            gui.setAction(nextSlot, event -> openMembers(player, team, adminView, currentPage + 1, adminContext));
+            gui.setAction(nextSlot, event -> {
+                pageSound(player, adminView, true);
+                openMembers(player, team, adminView, currentPage + 1, adminContext);
+            });
         }
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, adminView);
     }
 
     private List<MemberView> memberEntries(Team team) {
@@ -548,16 +569,22 @@ public final class GuiService {
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
             gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
-            gui.setAction(lastRowStart, event -> openTransferOwnership(player, team, adminView, currentPage - 1, adminContext));
+            gui.setAction(lastRowStart, event -> {
+                pageSound(player, adminView, false);
+                openTransferOwnership(player, team, adminView, currentPage - 1, adminContext);
+            });
         }
         setBackButton(gui, () -> openSettings(player, team, adminView, adminContext));
         if (start + pageSize < candidates.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
             gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
-            gui.setAction(nextSlot, event -> openTransferOwnership(player, team, adminView, currentPage + 1, adminContext));
+            gui.setAction(nextSlot, event -> {
+                pageSound(player, adminView, true);
+                openTransferOwnership(player, team, adminView, currentPage + 1, adminContext);
+            });
         }
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, adminView);
     }
 
     private void openTransferOwnershipConfirm(Player player, Team team, boolean adminView, UUID newOwner, int page) {
@@ -584,9 +611,12 @@ public final class GuiService {
                 "#ffffffCurrent role: #03fc88" + targetRole.displayName(),
                 "#ffffffThis player will become the owner.")));
         gui.getInventory().setItem(15, item(Material.RED_DYE, "#ff5d73Cancel", List.of("#ffffffReturn without changing ownership.")));
-        gui.setAction(15, event -> openTransferOrigin(player, team, adminView, adminContext, page, origin));
+        gui.setAction(15, event -> {
+            prepareBackNavigation(player);
+            openTransferOrigin(player, team, adminView, adminContext, page, origin);
+        });
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, adminView);
     }
 
     private void confirmTransferOwnership(Player player, Team team, boolean adminView, UUID newOwner, int page) {
@@ -604,6 +634,7 @@ public final class GuiService {
         }
         try {
             plugin.getTeamService().transfer(team, newOwner);
+            sound(player, "member-updated");
             plugin.getMessages().send(player, "transfer-success", Map.of("{player}", playerName(newOwner)));
             if (origin == TransferConfirmOrigin.MEMBERS) {
                 openMembers(player, team, adminView, page, adminContext);
@@ -695,6 +726,7 @@ public final class GuiService {
                 if (event.getClick() == ClickType.RIGHT) {
                     mutate(player, team, adminView, TeamAction.SET_HOME, () -> {
                         plugin.getTeamService().setHome(team, player.getLocation());
+                        sound(player, "home-set");
                         plugin.getMessages().send(player, "home-set");
                         openWarps(player, team, adminView, currentPage, adminContext);
                     });
@@ -703,6 +735,7 @@ public final class GuiService {
                 if (event.getClick().isShiftClick()) {
                     mutate(player, team, adminView, TeamAction.DELETE_HOME, () -> {
                         plugin.getTeamService().deleteHome(team);
+                        sound(player, "home-deleted");
                         plugin.getMessages().send(player, "home-deleted");
                         openWarps(player, team, adminView, currentPage, adminContext);
                     });
@@ -737,6 +770,7 @@ public final class GuiService {
                 } else if (event.getClick() == ClickType.RIGHT) {
                     mutate(player, team, adminView, TeamAction.DELETE_WARP, () -> {
                         plugin.getTeamService().deleteWarp(team, entry.getKey());
+                        sound(player, "warp-deleted");
                         plugin.getMessages().send(player, "warp-deleted", Map.of("{warp}", entry.getKey()));
                         openWarps(player, team, adminView, currentPage, adminContext);
                     });
@@ -746,7 +780,10 @@ public final class GuiService {
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
             gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
-            gui.setAction(lastRowStart, event -> openWarps(player, team, adminView, currentPage - 1, adminContext));
+            gui.setAction(lastRowStart, event -> {
+                pageSound(player, adminView, false);
+                openWarps(player, team, adminView, currentPage - 1, adminContext);
+            });
         }
         int createSlot = lastRowStart + 5;
         gui.getInventory().setItem(createSlot, item(Material.ANVIL, "#03fc88Create Warp", List.of("#ffffffClick to create a new warp at your location.")));
@@ -776,10 +813,13 @@ public final class GuiService {
         if (start + pageSize < warps.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
             gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
-            gui.setAction(nextSlot, event -> openWarps(player, team, adminView, currentPage + 1, adminContext));
+            gui.setAction(nextSlot, event -> {
+                pageSound(player, adminView, true);
+                openWarps(player, team, adminView, currentPage + 1, adminContext);
+            });
         }
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, adminView);
     }
 
     private int pagedRows(int itemCount) {
@@ -848,6 +888,7 @@ public final class GuiService {
                 .emptyItem(emptyItem)
                 .context(new RelationsBrowserContext(team.getId(), adminView, adminContext))
                 .build());
+        screenOpen(player, adminView);
     }
 
     public void openInfo(Player viewer, Team team) {
@@ -892,7 +933,10 @@ public final class GuiService {
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
             gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
-            gui.setAction(lastRowStart, event -> openInfo(viewer, team, currentPage - 1, adminContext));
+            gui.setAction(lastRowStart, event -> {
+                pageSound(viewer, adminContext != null, false);
+                openInfo(viewer, team, currentPage - 1, adminContext);
+            });
         }
         if (adminContext != null) {
             setBackButton(gui, () -> openAdminEditor(viewer, team, adminContext));
@@ -902,10 +946,13 @@ public final class GuiService {
         if (start + pageSize < members.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
             gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
-            gui.setAction(nextSlot, event -> openInfo(viewer, team, currentPage + 1, adminContext));
+            gui.setAction(nextSlot, event -> {
+                pageSound(viewer, adminContext != null, true);
+                openInfo(viewer, team, currentPage + 1, adminContext);
+            });
         }
         viewer.openInventory(gui.getInventory());
-        sound(viewer, "gui-open");
+        screenOpen(viewer, adminContext != null);
     }
 
     public void openEditorHome(Player player) {
@@ -935,7 +982,7 @@ public final class GuiService {
 
         gui.getInventory().setItem(22, emptyInfoPane());
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, true);
     }
 
     public void openBrowser(Player player, int page) {
@@ -965,6 +1012,7 @@ public final class GuiService {
                 .showBack(true)
                 .addButton(item(Material.ANVIL, "#03fc88Create Team", List.of("#ffffffCreate a team without an owner.")))
                 .build());
+        screenOpen(player, true);
     }
 
     public void handleEntryBrowserClick(Player player, int slot, EntryBrowserHolder holder) {
@@ -988,7 +1036,9 @@ public final class GuiService {
                     openBrowser(player, holder.request().page(), search);
                 }
             }
-            case ADD -> promptText(player, "prompt-name", input -> {
+            case ADD -> {
+                plugin.getEditorSounds().add(player);
+                promptText(player, "prompt-name", input -> {
                 try {
                     if (!validateTeamName(player, input)) {
                         return;
@@ -1003,15 +1053,29 @@ public final class GuiService {
                     plugin.getLogger().log(Level.WARNING, "Failed to create ownerless team from editor.", exception);
                     plugin.getMessages().send(player, "team-create-failed");
                 }
-            });
-            case BACK -> openEditorHome(player);
-            case SEARCH -> promptTeamSearch(player, search);
+                });
+            }
+            case BACK -> {
+                prepareBackNavigation(player);
+                openEditorHome(player);
+            }
+            case SEARCH -> {
+                plugin.getEditorSounds().search(player);
+                promptTeamSearch(player, search);
+            }
             case CLEAR_SEARCH -> {
+                plugin.getEditorSounds().clearSearch(player);
                 plugin.getMessages().send(player, "editor-search-cleared");
                 openBrowser(player, 0, "");
             }
-            case PREVIOUS_PAGE -> openBrowser(player, holder.request().page() - 1, search);
-            case NEXT_PAGE -> openBrowser(player, holder.request().page() + 1, search);
+            case PREVIOUS_PAGE -> {
+                plugin.getEditorSounds().previousPage(player);
+                openBrowser(player, holder.request().page() - 1, search);
+            }
+            case NEXT_PAGE -> {
+                plugin.getEditorSounds().nextPage(player);
+                openBrowser(player, holder.request().page() + 1, search);
+            }
             case NONE -> {
                 // Filler and inactive navigation slots intentionally do nothing.
             }
@@ -1049,14 +1113,27 @@ public final class GuiService {
                     openRelations(player, team, context.adminView(), holder.request().page(), search, context.adminContext());
                 });
             }
-            case BACK -> openSettings(player, team, context.adminView(), context.adminContext());
-            case SEARCH -> promptRelationTeamSearch(player, team, context.adminView(), search, context.adminContext());
+            case BACK -> {
+                prepareBackNavigation(player);
+                openSettings(player, team, context.adminView(), context.adminContext());
+            }
+            case SEARCH -> {
+                searchSound(player, context.adminView(), false);
+                promptRelationTeamSearch(player, team, context.adminView(), search, context.adminContext());
+            }
             case CLEAR_SEARCH -> {
+                searchSound(player, context.adminView(), true);
                 plugin.getMessages().send(player, "editor-search-cleared");
                 openRelations(player, team, context.adminView(), 0, "", context.adminContext());
             }
-            case PREVIOUS_PAGE -> openRelations(player, team, context.adminView(), holder.request().page() - 1, search, context.adminContext());
-            case NEXT_PAGE -> openRelations(player, team, context.adminView(), holder.request().page() + 1, search, context.adminContext());
+            case PREVIOUS_PAGE -> {
+                pageSound(player, context.adminView(), false);
+                openRelations(player, team, context.adminView(), holder.request().page() - 1, search, context.adminContext());
+            }
+            case NEXT_PAGE -> {
+                pageSound(player, context.adminView(), true);
+                openRelations(player, team, context.adminView(), holder.request().page() + 1, search, context.adminContext());
+            }
             case ADD, NONE -> {
                 // The relationships browser has no add action; filler and inactive slots do nothing.
             }
@@ -1091,7 +1168,7 @@ public final class GuiService {
         }
         setBackButton(gui, () -> openEditorHome(player));
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, true);
     }
 
     private int configCategorySize(ConfigCategory category) {
@@ -1124,6 +1201,7 @@ public final class GuiService {
                 )),
                 maxLength(setting)
         );
+        plugin.getEditorSounds().open(player);
         plugin.getInputGuiService().openInput(player, prompt, input -> {
             Object parsed = parseConfigSetting(setting, input);
             if (parsed == null) {
@@ -1131,6 +1209,7 @@ public final class GuiService {
                         "{setting}", setting.label(),
                         "{format}", setting.expectedInput()
                 ));
+                plugin.getEditorSounds().error(player);
                 openConfigCategory(player, categoryId);
                 return;
             }
@@ -1148,6 +1227,11 @@ public final class GuiService {
                     "{setting}", setting.label(),
                     "{value}", displayConfigValue(setting, value)
             ));
+            if (setting.type() == ConfigValueType.BOOLEAN) {
+                plugin.getEditorSounds().toggle(player, value instanceof Boolean enabled && enabled);
+            } else {
+                plugin.getEditorSounds().save(player);
+            }
         } catch (Exception exception) {
             plugin.getConfig().set(setting.path(), previous);
             try {
@@ -1158,6 +1242,7 @@ public final class GuiService {
             }
             plugin.getLogger().log(Level.WARNING, "Failed to apply editor setting " + setting.path() + ".", exception);
             plugin.getMessages().send(player, "editor-setting-save-failed", Map.of("{setting}", setting.label()));
+            plugin.getEditorSounds().error(player);
         }
         openConfigCategory(player, categoryId);
     }
@@ -1447,7 +1532,7 @@ public final class GuiService {
         gui.setAction(22, event -> openConfirm(player, team, true, adminContext, ConfirmBackTarget.ADMIN_EDITOR));
         setBackButton(gui, () -> openBrowser(player, adminContext.browserPage(), adminContext.browserSearch()));
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, true);
     }
 
     private AdminEditorContext contextOrDefault(AdminEditorContext adminContext) {
@@ -1465,6 +1550,7 @@ public final class GuiService {
         }
         SharedChestHolder holder = sharedChests.computeIfAbsent(team.getId(), ignored -> createSharedChest(team));
         player.openInventory(holder.getInventory());
+        screenOpen(player, adminView);
     }
 
     public void openUpgrades(Player player, Team team, boolean adminView) {
@@ -1516,6 +1602,7 @@ public final class GuiService {
                     return;
                 }
                 plugin.getMessages().send(player, "upgrade-team-size-success", Map.of("{cost}", Text.money(cost), "{cap}", String.valueOf(team.getMemberCap())));
+                sound(player, "upgrade");
                 openUpgrades(player, team, adminView);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to purchase member-cap upgrade for team " + team.getId() + ".", exception);
@@ -1565,6 +1652,7 @@ public final class GuiService {
                     return;
                 }
                 plugin.getMessages().send(player, "upgrade-echest-success", Map.of("{cost}", Text.money(cost), "{rows}", String.valueOf(team.getEchestRows())));
+                sound(player, "upgrade");
                 openUpgrades(player, team, adminView);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to purchase shared-chest upgrade for team " + team.getId() + ".", exception);
@@ -1584,7 +1672,7 @@ public final class GuiService {
             }
         });
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, adminView);
     }
 
     public void queueSharedChestSave(SharedChestHolder holder) {
@@ -1654,6 +1742,7 @@ public final class GuiService {
                         plugin.getTeamChatService().clearModes(plugin.getTeamService().allMembers(team));
                         closeSharedChest(team);
                         plugin.getTeamService().disband(team);
+                        sound(player, "disbanded");
                         plugin.getMessages().send(player, "team-disbanded", Map.of("{team}", team.getName()));
                         player.closeInventory();
                     });
@@ -1661,6 +1750,7 @@ public final class GuiService {
                     plugin.getTeamChatService().clearModes(plugin.getTeamService().allMembers(team));
                     closeSharedChest(team);
                     plugin.getTeamService().disband(team);
+                    sound(player, "disbanded");
                     plugin.getMessages().send(player, "team-deleted", Map.of("{team}", team.getName()));
                     AdminEditorContext context = contextOrDefault(adminContext);
                     openBrowser(player, context.browserPage(), context.browserSearch());
@@ -1672,6 +1762,7 @@ public final class GuiService {
         });
         gui.getInventory().setItem(15, item(Material.RED_DYE, "#ff5d73Cancel", List.of("#ffffffReturn without changing anything.")));
         gui.setAction(15, event -> {
+            prepareBackNavigation(player);
             if (adminView) {
                 if (backTarget == ConfirmBackTarget.SETTINGS) {
                     openSettings(player, team, true, adminContext);
@@ -1683,7 +1774,7 @@ public final class GuiService {
             }
         });
         player.openInventory(gui.getInventory());
-        sound(player, "gui-open");
+        screenOpen(player, adminView);
     }
 
     private void handleMemberClick(Player actor, Team team, boolean adminView, AdminEditorContext adminContext, MemberView entry, ClickType clickType, int page) {
@@ -1714,6 +1805,7 @@ public final class GuiService {
                     return;
                 }
                 plugin.getTeamService().kick(team, entry.id());
+                sound(actor, "member-updated");
                 plugin.getMessages().send(actor, "kick-success", Map.of("{player}", playerName(entry.id())));
                 Player kicked = Bukkit.getPlayer(entry.id());
                 if (kicked != null) {
@@ -1733,6 +1825,7 @@ public final class GuiService {
                         return;
                     }
                     plugin.getMessages().send(actor, "promote-success", Map.of("{player}", playerName(entry.id()), "{role}", "admin"));
+                    sound(actor, "member-updated");
                 } else if (entry.role() == TeamRole.ADMIN) {
                     if (!adminView && !plugin.getTeamService().can(team, actor.getUniqueId(), TeamAction.DEMOTE)) {
                         plugin.getMessages().send(actor, "no-permission-role");
@@ -1740,6 +1833,7 @@ public final class GuiService {
                     }
                     plugin.getTeamService().demote(team, entry.id());
                     plugin.getMessages().send(actor, "demote-success", Map.of("{player}", playerName(entry.id()), "{role}", "member"));
+                    sound(actor, "member-updated");
                 }
                 openMembers(actor, team, adminView, page, adminContext);
             }
@@ -1894,12 +1988,18 @@ public final class GuiService {
         try {
             if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), action)) {
                 plugin.getMessages().send(player, "no-permission-role");
+                sound(player, "failure");
                 return;
             }
             checkedAction.run();
+            String soundKey = successfulActionSound(action);
+            if (soundKey != null) {
+                sound(player, soundKey);
+            }
         } catch (Exception exception) {
             plugin.getLogger().log(Level.WARNING, "GUI action failed for team " + team.getId() + ".", exception);
             plugin.getMessages().send(player, "action-failed");
+            sound(player, "failure");
         }
     }
 
@@ -1947,7 +2047,12 @@ public final class GuiService {
     private void setBackButton(FoGui gui, Runnable action) {
         int slot = gui.getInventory().getSize() - 5;
         gui.getInventory().setItem(slot, backButton());
-        gui.setAction(slot, event -> action.run());
+        gui.setAction(slot, event -> {
+            if (event.getWhoClicked() instanceof Player player) {
+                pendingBackNavigations.add(player.getUniqueId());
+            }
+            action.run();
+        });
     }
 
     private ItemStack previousPageButton(int targetPage, int maxPage) {
@@ -2071,15 +2176,69 @@ public final class GuiService {
     }
 
     private void sound(Player player, String key) {
-        FileConfiguration configuration = plugin.getConfig();
-        String value = configuration.getString("sounds." + key);
-        if (value == null) {
+        plugin.getSounds().play(player, "team." + key);
+    }
+
+    private String successfulActionSound(TeamAction action) {
+        return switch (action) {
+            case CHANGE_NAME, CHANGE_TAG, CHANGE_DESCRIPTION, CHANGE_COLOR -> "settings-saved";
+            case SET_HOME -> "home-set";
+            case DELETE_HOME -> "home-deleted";
+            case SET_WARP -> "warp-set";
+            case DELETE_WARP -> "warp-deleted";
+            case MANAGE_RELATIONS -> "relation-updated";
+            case DISBAND -> "disbanded";
+            default -> null;
+        };
+    }
+
+    private void prepareBackNavigation(Player player) {
+        pendingBackNavigations.add(player.getUniqueId());
+    }
+
+    private void pageSound(Player player, boolean adminView, boolean next) {
+        if (adminView) {
+            if (next) {
+                plugin.getEditorSounds().nextPage(player);
+            } else {
+                plugin.getEditorSounds().previousPage(player);
+            }
             return;
         }
-        try {
-            SoundTypes.resolve(value).ifPresent(sound -> player.playSound(player.getLocation(), sound, 0.8f, 1f));
-        } catch (RuntimeException exception) {
-            plugin.getLogger().log(Level.FINE, "Failed to play configured GUI sound " + key + ".", exception);
+        plugin.getSounds().play(player, next ? "gui.page-next" : "gui.page-previous");
+    }
+
+    private void searchSound(Player player, boolean adminView, boolean clear) {
+        if (adminView) {
+            if (clear) {
+                plugin.getEditorSounds().clearSearch(player);
+            } else {
+                plugin.getEditorSounds().search(player);
+            }
+            return;
+        }
+        plugin.getSounds().play(player, clear ? "gui.clear-search" : "gui.search");
+    }
+
+    private void screenOpen(Player player, boolean adminView) {
+        UUID playerId = player.getUniqueId();
+        String title = player.getOpenInventory().getTitle();
+        ScreenState previous = activeScreens.put(playerId, new ScreenState(title, adminView));
+        if (pendingBackNavigations.remove(playerId)) {
+            if (previous == null || previous.adminView()) {
+                plugin.getEditorSounds().back(player);
+            } else {
+                plugin.getSounds().play(player, "gui.back");
+            }
+            return;
+        }
+        if (previous != null && previous.title().equals(title)) {
+            return;
+        }
+        if (adminView) {
+            plugin.getEditorSounds().open(player);
+        } else {
+            plugin.getGuiSounds().open(player);
         }
     }
 
@@ -2092,6 +2251,9 @@ public final class GuiService {
     }
 
     private record ConfigCategory(String id, String title, Material material, List<String> lore, List<ConfigSetting> settings) {
+    }
+
+    private record ScreenState(String title, boolean adminView) {
     }
 
     private record ConfigSetting(String path, String label, Material material, ConfigValueType type, String expectedInput, double min, double max) {

@@ -76,5 +76,8 @@ public final class GuiListener implements Listener {
         if (event.getInventory().getHolder() instanceof SharedChestHolder holder) {
             plugin.getGuiService().handleSharedChestClose(holder);
         }
+        if (event.getPlayer() instanceof Player player) {
+            plugin.getGuiService().clearScreenTrackingIfClosed(player);
+        }
     }
 }

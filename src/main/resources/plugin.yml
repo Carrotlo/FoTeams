@@ -10,12 +10,10 @@ commands:
   foteams:
     description: Main FoTeams command
     aliases: [team, teams]
-    permission: foteams.use
     usage: /<command> [subcommand]
   foteamsadmin:
     description: FoTeams admin command
     aliases: [teamadmin, teamsadmin]
-    permission: foteams.admin
     usage: /<command> [subcommand]
 
 permissions:

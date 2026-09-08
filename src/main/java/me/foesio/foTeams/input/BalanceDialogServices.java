@@ -13,7 +13,7 @@ public final class BalanceDialogServices {
     private static final String PAPER_SERVICE_CLASS = "me.foesio.foTeams.input.paper.PaperBalanceDialogService";
     private static final BalanceDialogService UNAVAILABLE = new BalanceDialogService() {
         @Override
-        public boolean canOpenNative() {
+        public boolean canOpenNative(Player player) {
             return false;
         }
 

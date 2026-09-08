@@ -15,6 +15,7 @@ import me.foesio.foTeams.command.AdminCommand;
 import me.foesio.foTeams.command.TeamCommand;
 import me.foesio.foTeams.config.PluginConfigs;
 import me.foesio.foTeams.gui.GuiService;
+import me.foesio.foTeams.gui.PublicGuiConfig;
 import me.foesio.foTeams.hook.FoLevelsTeamXpHook;
 import me.foesio.foTeams.hook.FoTeamsPlaceholders;
 import me.foesio.foTeams.input.InputGuiService;
@@ -86,6 +87,7 @@ public final class FoTeams extends JavaPlugin {
     private FoAdminSounds adminSounds;
     private FoEditorSounds editorSounds;
     private FoGuiSounds guiSounds;
+    private PublicGuiConfig publicGui;
 
     @Override
     public void onEnable() {
@@ -112,6 +114,9 @@ public final class FoTeams extends JavaPlugin {
         editorSounds = FoEditorSounds.create(sounds);
         guiSounds = FoGuiSounds.create(sounds);
         messages = FoMessageService.load(this, messageMigrations());
+        migrateSprites();
+        publicGui = new PublicGuiConfig(this);
+        publicGui.initialize(core.migrations());
         startMetrics();
         updates = core.createUpdateNotices(messages, "foteams", adminSounds).start();
         rolePermissions = new RolePermissionService(pluginConfigs.permissions());
@@ -193,6 +198,39 @@ public final class FoTeams extends JavaPlugin {
                 .build();
     }
 
+    private void migrateSprites() {
+        messages.migrateToVersion(core.migrations(), 1, config -> {
+            boolean changed = false;
+            changed |= FoMessageService.addMissingToken(config, "tokens.prefix", ":shield:", null);
+            changed |= FoMessageService.addMissingToken(config, "team-created", ":emerald:");
+            changed |= FoMessageService.addMissingToken(config, "team-disbanded", ":lava_bucket:");
+            changed |= FoMessageService.addMissingToken(config, "team-deleted", ":lava_bucket:");
+            changed |= FoMessageService.addMissingToken(config, "invite-sent", ":paper:");
+            changed |= FoMessageService.addMissingToken(config, "join-success", ":emerald:");
+            changed |= FoMessageService.addMissingToken(config, "home-set", ":compass:");
+            changed |= FoMessageService.addMissingToken(config, "home-deleted", ":lava_bucket:");
+            changed |= FoMessageService.addMissingToken(config, "warp-set", ":compass:");
+            changed |= FoMessageService.addMissingToken(config, "warp-deleted", ":lava_bucket:");
+            changed |= FoMessageService.addMissingToken(config, "relation-updated", ":compass:");
+            changed |= FoMessageService.addMissingToken(config, "upgrade-team-size-success", ":emerald:");
+            changed |= FoMessageService.addMissingToken(config, "upgrade-echest-success", ":ender_chest:");
+            changed |= FoMessageService.addMissingToken(config, "reload-success", ":emerald:");
+            changed |= FoMessageService.addMissingToken(config, "editor-opened", ":book:");
+            changed |= FoMessageService.addMissingToken(config, "editor-setting-saved", ":emerald:");
+            changed |= FoMessageService.addMissingToken(config, "editor-setting-save-failed", ":redstone:");
+            return changed;
+        });
+        messages.migrateToVersion(core.migrations(), 2, config -> {
+            String oldPrefix = ":shield: {theme}FoTeams &8» {muted}";
+            if (!oldPrefix.equals(config.getString("tokens.prefix"))) {
+                return false;
+            }
+            config.set("tokens.prefix", ":diamond_helmet: {theme}FoTeams &8» {muted}");
+            return true;
+        });
+        messages.reload();
+    }
+
     private void registerCommands() {
         PluginCommand team = getCommand("foteams");
         PluginCommand admin = getCommand("foteamsadmin");
@@ -252,6 +290,7 @@ public final class FoTeams extends JavaPlugin {
         core.warnIfNativeDialogsUnavailable();
         sounds.reload();
         messages.reload();
+        publicGui.reload();
         startMetrics();
         inputGuiService = InputGuiServices.create(this, core);
         teleportDelayService = new TeleportDelayService(this);
@@ -260,6 +299,10 @@ public final class FoTeams extends JavaPlugin {
         startTeamLevelAutosaveTask();
         economyService.hook();
         registerPlaceholders();
+    }
+
+    public PublicGuiConfig publicGui() {
+        return publicGui;
     }
 
     private TeamService createTeamService() throws SQLException {

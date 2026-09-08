@@ -1,5 +1,6 @@
 package me.foesio.foTeams.gui;
 
+import me.foesio.core.dialog.DialogIcons;
 import me.foesio.core.gui.GuiButtonConfig;
 import me.foesio.core.gui.GuiTitles;
 import me.foesio.core.item.FoItemStacks;
@@ -7,6 +8,7 @@ import me.foesio.core.number.LargeNumberParser;
 import me.foesio.core.text.FoText;
 import me.foesio.core.text.PromptNormalizer;
 import me.foesio.core.editor.EditorItemFactory;
+import me.foesio.core.message.FoStyle;
 import me.foesio.core.gui.EntryBrowserClick;
 import me.foesio.core.gui.EntryBrowserHolder;
 import me.foesio.core.gui.EntryBrowserMenus;
@@ -101,10 +103,11 @@ public final class GuiService {
 
     public void openDashboard(Player player) {
         Optional<Team> optionalTeam = plugin.getTeamService().teamOf(player.getUniqueId());
-        FoGui gui = gui(optionalTeam.isEmpty() ? 27 : 45, plugin.getConfig().getString("gui.titles.dashboard", "FoTeams"));
+        FoGui gui = publicGui(optionalTeam.isEmpty() ? 27 : 45, player, "dashboard", "ᴛᴇᴀᴍs");
         fill(gui);
         if (optionalTeam.isEmpty()) {
-            gui.getInventory().setItem(11, item(Material.EMERALD, "#03fc88Create Team", List.of("#ffffffCreate your own team.", "#a7b8b0Click to type a team name.")));
+            gui.getInventory().setItem(11, publicItem(player, "dashboard", "create", Material.EMERALD,
+                    "#03fc88Create Team", List.of("#ffffffCreate your own team.", "#a7b8b0Click to type a team name.")));
             gui.setAction(11, event -> promptText(player, "prompt-name", input -> {
                 try {
                     if (!validateTeamName(player, input)) {
@@ -124,9 +127,11 @@ public final class GuiService {
                 }
             }));
             List<TeamInvite> invites = plugin.getTeamService().invites(player.getUniqueId());
-            gui.getInventory().setItem(15, item(Material.WRITABLE_BOOK, "#03fc88Invites", invites.isEmpty()
+            gui.getInventory().setItem(15, publicItem(player, "dashboard", "invites", Material.WRITABLE_BOOK, "#03fc88Invites", invites.isEmpty()
                     ? List.of("#ffffffNo pending team invites.")
-                    : invites.stream().limit(5).map(invite -> "#ffffff" + plugin.getTeamService().byId(invite.teamId()).map(Team::getName).orElse("Unknown")).toList()));
+                    : invites.stream().limit(5).map(invite -> "#ffffff" + plugin.getTeamService().byId(invite.teamId()).map(Team::getName).orElse("Unknown")).toList(),
+                    Map.of("invite_status", invites.isEmpty() ? "#ffffffNo pending team invites."
+                            : "#ffffffPending invites: #03fc88" + invites.size())));
             gui.setAction(15, event -> {
                 if (!invites.isEmpty()) {
                     Team team = plugin.getTeamService().byId(invites.getFirst().teamId()).orElse(null);
@@ -147,36 +152,37 @@ public final class GuiService {
             });
         } else {
             Team team = optionalTeam.get();
-            gui.getInventory().setItem(10, item(Material.NAME_TAG, accent("Team Info"), List.of(
+            gui.getInventory().setItem(10, publicItem(player, "dashboard", "info", Material.NAME_TAG, accent("Team Info"), List.of(
                     "#ffffffName: " + accent(team.getName()),
                     "#ffffffTag: " + tag(team),
-                    "#ffffffDescription: #ffffff" + team.getDescription())));
+                    "#ffffffDescription: #ffffff" + team.getDescription()),
+                    Map.of("team", team.getName(), "tag", team.getTag(), "description", team.getDescription())));
             gui.setAction(10, event -> openInfo(player, team));
-            gui.getInventory().setItem(12, item(Material.COMPARATOR, accent("Settings"), List.of("#ffffffManage your team.")));
+            gui.getInventory().setItem(12, publicItem(player, "dashboard", "settings", Material.COMPARATOR, accent("Settings"), List.of("#ffffffManage your team.")));
             gui.setAction(12, event -> openSettings(player, team, false));
-            gui.getInventory().setItem(14, item(Material.PLAYER_HEAD, accent("Members"), List.of(
+            gui.getInventory().setItem(14, publicItem(player, "dashboard", "members", Material.PLAYER_HEAD, accent("Members"), List.of(
                     "#ffffffOwner: " + playerName(team.getOwnerId()),
                     "#ffffffAdmins: " + team.getAdmins().size(),
                     "#ffffffMembers: " + team.getMembers().size())));
             gui.setAction(14, event -> openMembers(player, team, false));
-            gui.getInventory().setItem(16, item(Material.ENDER_PEARL, accent("Warps"), List.of(
+            gui.getInventory().setItem(16, publicItem(player, "dashboard", "warps", Material.ENDER_PEARL, accent("Warps"), List.of(
                     "#ffffffHome and warp travel.",
                     "#ffffffWarps: " + team.getWarps().size() + "/" + plugin.getTeamService().maxWarps())));
             gui.setAction(16, event -> openWarps(player, team, false));
-            gui.getInventory().setItem(28, item(Material.EMERALD, accent("Score Top"), List.of(
+            gui.getInventory().setItem(28, publicItem(player, "dashboard", "score-top", Material.EMERALD, accent("Score Top"), List.of(
                     "#ffffffScore: " + team.getScore(),
                     "#ffffffRank: " + plugin.getTeamService().scoreRank(team))));
             gui.setAction(28, event -> player.performCommand("team top"));
-            gui.getInventory().setItem(30, item(Material.GOLD_INGOT, accent("Balance"), List.of(
+            gui.getInventory().setItem(30, publicItem(player, "dashboard", "balance", Material.GOLD_INGOT, accent("Balance"), List.of(
                     "#ffffffBank: " + Text.money(team.getBalance()),
                     plugin.getEconomyService().isEnabled() ? "#ffffffClick to deposit or withdraw." : "#ff5d73Vault not installed.")));
             gui.setAction(30, event -> openBalanceDialog(player, team));
-            gui.getInventory().setItem(32, item(Material.ENDER_CHEST, accent("Shared Chest"), List.of("#ffffffOpen your team ender chest.")));
+            gui.getInventory().setItem(32, publicItem(player, "dashboard", "shared-chest", Material.ENDER_CHEST, accent("Shared Chest"), List.of("#ffffffOpen your team ender chest.")));
             gui.setAction(32, event -> openSharedChest(player, team, false));
-            gui.getInventory().setItem(34, item(Material.ANVIL, accent("Upgrades"), List.of("#ffffffUpgrade team size and shared chest size.")));
+            gui.getInventory().setItem(34, publicItem(player, "dashboard", "upgrades", Material.ANVIL, accent("Upgrades"), List.of("#ffffffUpgrade team size and shared chest size.")));
             gui.setAction(34, event -> openUpgrades(player, team, false));
         }
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, false);
     }
 
@@ -200,7 +206,7 @@ public final class GuiService {
                 canWithdraw
         );
         BalanceDialogService service = BalanceDialogServices.create(plugin, plugin.getCore());
-        boolean nativeAttempt = service.canOpenNative();
+        boolean nativeAttempt = service.canOpenNative(player);
         boolean suppressedClose = false;
         if (nativeAttempt) {
             suppressedClose = suppressNextInventoryClose(player);
@@ -317,9 +323,13 @@ public final class GuiService {
     }
 
     private void openSettings(Player player, Team team, boolean adminView, AdminEditorContext adminContext) {
-        FoGui gui = gui(36, plugin.getConfig().getString("gui.titles.settings", "Settings"));
+        FoGui gui = adminView
+                ? gui(36, plugin.getConfig().getString("gui.titles.settings", "Settings"))
+                : publicGui(36, player, "settings", "ᴛᴇᴀᴍ sᴇᴛᴛɪɴɢs");
         fill(gui);
-        gui.getInventory().setItem(10, item(Material.NAME_TAG, accent("Name"), List.of("#ffffffCurrent: " + accent(team.getName()), "#ffffffClick to rename.")));
+        gui.getInventory().setItem(10, screenItem(player, adminView, "settings", "name", Material.NAME_TAG,
+                accent("Name"), List.of("#ffffffCurrent: " + accent(team.getName()), "#ffffffClick to rename."),
+                Map.of("team", team.getName())));
         gui.setAction(10, event -> promptText(player, "prompt-name", team.getName(), input -> {
             if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.CHANGE_NAME)) {
                 plugin.getMessages().send(player, "no-permission-role");
@@ -341,7 +351,8 @@ public final class GuiService {
                 plugin.getMessages().send(player, "settings-save-failed");
             }
         }));
-        gui.getInventory().setItem(11, item(Material.OAK_SIGN, accent("Tag"), List.of("#ffffffCurrent: " + tag(team), "#ffffffClick to edit the tag.")));
+        gui.getInventory().setItem(11, screenItem(player, adminView, "settings", "tag", Material.OAK_SIGN,
+                accent("Tag"), List.of("#ffffffCurrent: " + tag(team), "#ffffffClick to edit the tag."), Map.of("tag", team.getTag())));
         gui.setAction(11, event -> promptText(player, "prompt-tag", team.getTag(), input -> mutate(player, team, adminView, TeamAction.CHANGE_TAG, () -> {
             if (!plugin.getTeamService().isValidTag(input)) {
                 plugin.getMessages().send(player, "tag-invalid", Map.of("{max}", String.valueOf(plugin.getTeamService().maxTagLength())));
@@ -354,7 +365,8 @@ public final class GuiService {
             plugin.getMessages().send(player, "tag-updated", Map.of("{tag}", input.toUpperCase(Locale.ROOT)));
             openSettings(player, team, adminView, adminContext);
         })));
-        gui.getInventory().setItem(12, item(Material.BOOK, accent("Description"), List.of("#ffffffCurrent: #ffffff" + team.getDescription(), "#ffffffClick to edit.")));
+        gui.getInventory().setItem(12, screenItem(player, adminView, "settings", "description", Material.BOOK,
+                accent("Description"), List.of("#ffffffCurrent: #ffffff" + team.getDescription(), "#ffffffClick to edit."), Map.of("description", team.getDescription())));
         gui.setAction(12, event -> promptText(player, "prompt-description", team.getDescription(), input -> mutate(player, team, adminView, TeamAction.CHANGE_DESCRIPTION, () -> {
             if (!validateAllowedTeamText(player, input)) {
                 return;
@@ -363,7 +375,8 @@ public final class GuiService {
             plugin.getMessages().send(player, "description-updated");
             openSettings(player, team, adminView, adminContext);
         })));
-        gui.getInventory().setItem(13, item(Material.LEATHER_CHESTPLATE, accent("Tag Color"), List.of("#ffffffCurrent: " + team.getColor(), "#ffffffClick to change the tag color.")));
+        gui.getInventory().setItem(13, screenItem(player, adminView, "settings", "tag-color", Material.LEATHER_CHESTPLATE,
+                accent("Tag Color"), List.of("#ffffffCurrent: " + team.getColor(), "#ffffffClick to change the tag color."), Map.of("color", team.getColor())));
         gui.setAction(13, event -> promptText(player, "prompt-tag-color", team.getColor(), input -> mutate(player, team, adminView, TeamAction.CHANGE_COLOR, () -> {
             if (!plugin.getTeamService().updateTagColor(team, input)) {
                 plugin.getMessages().send(player, "tag-color-invalid");
@@ -372,13 +385,16 @@ public final class GuiService {
             plugin.getMessages().send(player, "tag-color-updated", Map.of("{color}", team.getColor()));
             openSettings(player, team, adminView, adminContext);
         })));
-        gui.getInventory().setItem(15, item(Material.LEAD, accent("Relations"), List.of("#ffffffManage allies and enemies.")));
+        gui.getInventory().setItem(15, screenItem(player, adminView, "settings", "relations", Material.LEAD,
+                accent("Relations"), List.of("#ffffffManage allies and enemies.")));
         gui.setAction(15, event -> openRelations(player, team, adminView, 0, "", adminContext));
-        gui.getInventory().setItem(21, item(Material.TOTEM_OF_UNDYING, accent("Transfer Ownership"), List.of("#ffffffChoose the next team owner.", "#a7b8b0Requires transfer permission.")));
+        gui.getInventory().setItem(21, screenItem(player, adminView, "settings", "transfer", Material.TOTEM_OF_UNDYING,
+                accent("Transfer Ownership"), List.of("#ffffffChoose the next team owner.", "#a7b8b0Requires transfer permission.")));
         gui.setAction(21, event -> openTransferOwnership(player, team, adminView, 0, adminContext));
         boolean pvpForceLock = plugin.getConfig().getBoolean("team-pvp-force-disable-all", false);
         boolean pvpProtected = !pvpForceLock && team.isTeamPvpProtectionEnabled();
-        gui.getInventory().setItem(16, item(pvpProtected ? Material.LIME_DYE : Material.GRAY_DYE,
+        gui.getInventory().setItem(16, screenItem(player, adminView, "settings", pvpProtected ? "pvp-enabled" : "pvp-disabled",
+                pvpProtected ? Material.LIME_DYE : Material.GRAY_DYE,
                 pvpProtected ? "#3ecf8eTeam PvP Protection Enabled" : "#ff5d73Team PvP Protection Disabled",
                 List.of(
                         "#ffffffEnabled: teammates cannot damage each other.",
@@ -407,16 +423,17 @@ public final class GuiService {
                 plugin.getMessages().send(player, "settings-save-failed");
             }
         });
-        gui.getInventory().setItem(23, item(Material.REDSTONE_BLOCK, adminView ? "#ff5d73Delete Team" : "#ff5d73Disband Team", List.of("#ffffffClick to confirm.")));
+        gui.getInventory().setItem(23, screenItem(player, adminView, "settings", "disband", Material.REDSTONE_BLOCK,
+                adminView ? "#ff5d73Delete Team" : "#ff5d73Disband Team", List.of("#ffffffClick to confirm.")));
         gui.setAction(23, event -> openConfirm(player, team, adminView, adminContext, ConfirmBackTarget.SETTINGS));
-        setBackButton(gui, () -> {
+        setBackButton(player, gui, () -> {
             if (adminView) {
                 openAdminEditor(player, team, contextOrDefault(adminContext));
             } else {
                 openDashboard(player);
             }
         });
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, adminView);
     }
 
@@ -437,15 +454,19 @@ public final class GuiService {
         int currentPage = Math.max(0, Math.min(page, maxPage));
         int start = currentPage * pageSize;
 
-        FoGui gui = gui(rows * 9, plugin.getConfig().getString("gui.titles.members", "Members"));
+        FoGui gui = adminView
+                ? gui(rows * 9, plugin.getConfig().getString("gui.titles.members", "Members"))
+                : publicGui(rows * 9, player, "members", "ᴍᴇᴍʙᴇʀs");
         fill(gui);
-        gui.getInventory().setItem(4, item(Material.NETHER_STAR, accent("Team Members"), List.of(
+        gui.getInventory().setItem(4, screenItem(player, adminView, "members", "header", Material.NETHER_STAR,
+                accent("Team Members"), List.of(
                 "#ffffffLeft-click: promote or demote",
                 "#ffffffRight-click: kick",
                 "#ffffffShift-right: transfer ownership with confirm")));
 
         if (members.isEmpty()) {
-            gui.getInventory().setItem(13, item(Material.GRAY_DYE, "#a7b8b0No Members", List.of("#ffffffThis team does not currently have members.")));
+            gui.getInventory().setItem(13, screenItem(player, adminView, "members", "empty", Material.GRAY_DYE,
+                    "#a7b8b0No Members", List.of("#ffffffThis team does not currently have members.")));
         } else {
             for (int index = 0; index < contentSlots.size(); index++) {
                 int memberIndex = start + index;
@@ -461,13 +482,13 @@ public final class GuiService {
 
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
+            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage));
             gui.setAction(lastRowStart, event -> {
                 pageSound(player, adminView, false);
                 openMembers(player, team, adminView, currentPage - 1, adminContext);
             });
         }
-        setBackButton(gui, () -> {
+        setBackButton(player, gui, () -> {
             if (adminView) {
                 openAdminEditor(player, team, contextOrDefault(adminContext));
             } else {
@@ -476,13 +497,13 @@ public final class GuiService {
         });
         if (start + pageSize < members.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
+            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage));
             gui.setAction(nextSlot, event -> {
                 pageSound(player, adminView, true);
                 openMembers(player, team, adminView, currentPage + 1, adminContext);
             });
         }
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, adminView);
     }
 
@@ -539,10 +560,13 @@ public final class GuiService {
         int currentPage = Math.max(0, Math.min(page, maxPage));
         int start = currentPage * pageSize;
 
-        FoGui gui = gui(rows * 9, plugin.getConfig().getString("gui.titles.transfer-ownership", "Transfer Ownership"));
+        FoGui gui = adminView
+                ? gui(rows * 9, plugin.getConfig().getString("gui.titles.transfer-ownership", "Transfer Ownership"))
+                : publicGui(rows * 9, player, "transfer-ownership", "ᴛʀᴀɴsꜰᴇʀ ᴏᴡɴᴇʀsʜɪᴘ");
         fill(gui);
         if (candidates.isEmpty()) {
-            gui.getInventory().setItem(13, item(Material.GRAY_DYE, "#a7b8b0No Transfer Targets", List.of(
+            gui.getInventory().setItem(13, screenItem(player, adminView, "transfer-ownership", "empty", Material.GRAY_DYE,
+                    "#a7b8b0No Transfer Targets", List.of(
                     "#ffffffInvite another player before transferring ownership.")));
         } else {
             for (int index = 0; index < contentSlots.size(); index++) {
@@ -568,22 +592,22 @@ public final class GuiService {
 
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
+            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage));
             gui.setAction(lastRowStart, event -> {
                 pageSound(player, adminView, false);
                 openTransferOwnership(player, team, adminView, currentPage - 1, adminContext);
             });
         }
-        setBackButton(gui, () -> openSettings(player, team, adminView, adminContext));
+        setBackButton(player, gui, () -> openSettings(player, team, adminView, adminContext));
         if (start + pageSize < candidates.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
+            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage));
             gui.setAction(nextSlot, event -> {
                 pageSound(player, adminView, true);
                 openTransferOwnership(player, team, adminView, currentPage + 1, adminContext);
             });
         }
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, adminView);
     }
 
@@ -602,20 +626,24 @@ public final class GuiService {
         }
 
         TeamRole targetRole = team.roleOf(newOwner);
-        FoGui gui = gui(27, plugin.getConfig().getString("gui.titles.confirm", "Confirm"));
+        FoGui gui = adminView
+                ? gui(27, plugin.getConfig().getString("gui.titles.confirm", "Confirm"))
+                : publicGui(27, player, "confirm", "ᴄᴏɴꜰɪʀᴍ");
         fill(gui);
-        gui.getInventory().setItem(11, item(Material.LIME_DYE, "#3ecf8eConfirm", List.of(
+        gui.getInventory().setItem(11, screenItem(player, adminView, "confirm", "confirm", Material.LIME_DYE,
+                "#3ecf8eConfirm", List.of(
                 "#ffffffTransfer ownership to #03fc88" + playerName(newOwner) + "#ffffff.")));
         gui.setAction(11, event -> confirmTransferOwnership(player, team, adminView, adminContext, newOwner, page, origin));
         gui.getInventory().setItem(13, playerHead(newOwner, accent(playerName(newOwner)), List.of(
                 "#ffffffCurrent role: #03fc88" + targetRole.displayName(),
                 "#ffffffThis player will become the owner.")));
-        gui.getInventory().setItem(15, item(Material.RED_DYE, "#ff5d73Cancel", List.of("#ffffffReturn without changing ownership.")));
+        gui.getInventory().setItem(15, screenItem(player, adminView, "confirm", "cancel", Material.RED_DYE,
+                "#ff5d73Cancel", List.of("#ffffffReturn without changing ownership.")));
         gui.setAction(15, event -> {
             prepareBackNavigation(player);
             openTransferOrigin(player, team, adminView, adminContext, page, origin);
         });
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, adminView);
     }
 
@@ -701,10 +729,13 @@ public final class GuiService {
         int currentPage = Math.max(0, Math.min(page, maxPage));
         int start = currentPage * pageSize;
 
-        FoGui gui = gui(rows * 9, plugin.getConfig().getString("gui.titles.warps", "Warps"));
+        FoGui gui = adminView
+                ? gui(rows * 9, plugin.getConfig().getString("gui.titles.warps", "Warps"))
+                : publicGui(rows * 9, player, "warps", "ᴡᴀʀᴘs");
         fill(gui);
         Location home = team.getHome();
-        gui.getInventory().setItem(4, item(Material.RECOVERY_COMPASS, accent("Team Home"), List.of(
+        gui.getInventory().setItem(4, screenItem(player, adminView, "warps", "home", Material.RECOVERY_COMPASS,
+                accent("Team Home"), List.of(
                 home == null ? "#ffffffNo home set." : "#ffffffHome is ready.",
                 "#ffffffLeft-click: teleport",
                 "#ffffffRight-click: set home",
@@ -753,9 +784,10 @@ public final class GuiService {
             Map.Entry<String, Location> entry = warps.get(warpIndex);
             int slot = contentSlots.get(index);
             boolean passwordProtected = plugin.getTeamService().warpRequiresPassword(team, entry.getKey());
-            gui.getInventory().setItem(slot, item(Material.ENDER_PEARL, accent(entry.getKey()), List.of(
+            gui.getInventory().setItem(slot, screenItem(player, adminView, "warps", "warp", Material.ENDER_PEARL,
+                    accent(entry.getKey()), List.of(
                     passwordProtected && !adminView ? "#ffffffProtected warp. Use /team warp <warp> <password>" : "#ffffffLeft-click: teleport",
-                    "#ffffffRight-click: delete warp")));
+                    "#ffffffRight-click: delete warp"), Map.of("warp", entry.getKey())));
             gui.setAction(slot, event -> {
                 if (event.getClick() == ClickType.LEFT) {
                     if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.USE_WARP)) {
@@ -779,14 +811,15 @@ public final class GuiService {
         }
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
+            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage));
             gui.setAction(lastRowStart, event -> {
                 pageSound(player, adminView, false);
                 openWarps(player, team, adminView, currentPage - 1, adminContext);
             });
         }
         int createSlot = lastRowStart + 5;
-        gui.getInventory().setItem(createSlot, item(Material.ANVIL, "#03fc88Create Warp", List.of("#ffffffClick to create a new warp at your location.")));
+        gui.getInventory().setItem(createSlot, screenItem(player, adminView, "warps", "create", Material.ANVIL,
+                "#03fc88Create Warp", List.of("#ffffffClick to create a new warp at your location.")));
         gui.setAction(createSlot, event -> promptText(player, "prompt-warp-create-password", "", input -> mutate(player, team, adminView, TeamAction.SET_WARP, () -> {
             String[] split = input.trim().split("\\s+", 2);
             String warpName = split[0].toLowerCase(Locale.ROOT);
@@ -803,7 +836,7 @@ public final class GuiService {
             plugin.getMessages().send(player, "warp-set", Map.of("{warp}", warpName));
             openWarps(player, team, adminView, currentPage, adminContext);
         }), () -> openWarps(player, team, adminView, currentPage, adminContext)));
-        setBackButton(gui, () -> {
+        setBackButton(player, gui, () -> {
             if (adminView) {
                 openAdminEditor(player, team, contextOrDefault(adminContext));
             } else {
@@ -812,13 +845,13 @@ public final class GuiService {
         });
         if (start + pageSize < warps.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
+            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage));
             gui.setAction(nextSlot, event -> {
                 pageSound(player, adminView, true);
                 openWarps(player, team, adminView, currentPage + 1, adminContext);
             });
         }
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, adminView);
     }
 
@@ -869,16 +902,25 @@ public final class GuiService {
                     : incoming ? "ally request received"
                     : relation == RelationType.ALLY_REQUEST ? "ally request sent"
                     : "neutral";
-            entries.add(EntryBrowserRequest.Entry.of(String.valueOf(other.getId()), item(material, accent(other.getName()), List.of(
+            ItemStack relationItem = adminView ? EditorItemFactory.button(player, material,
+                    FoStyle.THEME, FoText.plain(accent(other.getName())), List.of(
                     "#ffffffStatus: " + status,
-                    "#ffffffLeft: ally | Right: enemy | Shift-right: clear"))));
+                    "#ffffffLeft: ally | Right: enemy | Shift-right: clear"), "manage relation")
+                    : publicItem(player, "relations", "entry", material, accent(other.getName()), List.of(
+                    "#ffffffStatus: " + status,
+                    "#ffffffLeft: ally | Right: enemy | Shift-right: clear"), Map.of("team", other.getName(), "status", status));
+            entries.add(EntryBrowserRequest.Entry.of(String.valueOf(other.getId()), relationItem));
         }
 
-        ItemStack emptyItem = item(Material.PAPER, "#ff5d73No Teams Found", normalizedSearch.isBlank()
+        ItemStack emptyItem = adminView ? EditorItemFactory.button(player, Material.PAPER, FoStyle.BAD, "No Teams Found", normalizedSearch.isBlank()
                 ? List.of("#ffffffThere are no other teams to manage.")
-                : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch));
+                : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch), "manage teams")
+                : publicItem(player, "relations", "empty", Material.PAPER, "#ff5d73No Teams Found", normalizedSearch.isBlank()
+                ? List.of("#ffffffThere are no other teams to manage.")
+                : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch), Map.of("search", normalizedSearch));
         EntryBrowserMenus.open(player, EntryBrowserRequest.builder()
-                .title(plugin.getConfig().getString("gui.titles.relations", "Relations"))
+                .title(adminView ? plugin.getConfig().getString("gui.titles.relations", "Relations")
+                        : GuiTitles.format(plugin.publicGui().title("relations", "ʀᴇʟᴀᴛɪᴏɴs")))
                 .entries(entries)
                 .page(page)
                 .filter(normalizedSearch)
@@ -908,17 +950,25 @@ public final class GuiService {
         int currentPage = Math.max(0, Math.min(page, maxPage));
         int start = currentPage * pageSize;
 
-        FoGui gui = gui(rows * 9, plugin.getConfig().getString("gui.titles.info", "Info"));
+        FoGui gui = adminContext != null
+                ? gui(rows * 9, plugin.getConfig().getString("gui.titles.info", "Info"))
+                : publicGui(rows * 9, viewer, "info", "ᴛᴇᴀᴍ ɪɴꜰᴏ");
         fill(gui);
-        gui.getInventory().setItem(2, item(Material.NAME_TAG, accent(team.getName()), teamInfoLore(team)));
-        gui.getInventory().setItem(4, item(Material.BELL, "#3ecf8eAllies", alliesLore(team)));
-        gui.getInventory().setItem(6, item(Material.PAPER, accent("Team Size"), List.of(plugin.getMessages().render("member-limit", "member-limit", Map.of(
+        gui.getInventory().setItem(2, screenItem(viewer, adminContext != null, "info", "team", Material.NAME_TAG,
+                accent(team.getName()), teamInfoLore(team), Map.of("team", team.getName(), "tag", team.getTag(),
+                        "description", team.getDescription(), "score", String.valueOf(team.getScore()),
+                        "balance", Text.money(team.getBalance()))));
+        gui.getInventory().setItem(4, screenItem(viewer, adminContext != null, "info", "allies", Material.BELL,
+                "#3ecf8eAllies", alliesLore(team)));
+        gui.getInventory().setItem(6, screenItem(viewer, adminContext != null, "info", "size", Material.PAPER,
+                accent("Team Size"), List.of(plugin.getMessages().render("member-limit", "member-limit", Map.of(
                 "{current}", String.valueOf(team.getMemberCount()),
                 "{max}", String.valueOf(team.getMemberCap())
         )))));
 
         if (members.isEmpty()) {
-            gui.getInventory().setItem(13, item(Material.GRAY_DYE, "#a7b8b0No Members", List.of("#ffffffThis team does not currently have members.")));
+            gui.getInventory().setItem(13, screenItem(viewer, adminContext != null, "members", "empty", Material.GRAY_DYE,
+                    "#a7b8b0No Members", List.of("#ffffffThis team does not currently have members.")));
         } else {
             for (int index = 0; index < contentSlots.size(); index++) {
                 int memberIndex = start + index;
@@ -932,26 +982,26 @@ public final class GuiService {
         }
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(currentPage - 1, maxPage));
+            gui.getInventory().setItem(lastRowStart, previousPageButton(viewer, currentPage - 1, maxPage));
             gui.setAction(lastRowStart, event -> {
                 pageSound(viewer, adminContext != null, false);
                 openInfo(viewer, team, currentPage - 1, adminContext);
             });
         }
         if (adminContext != null) {
-            setBackButton(gui, () -> openAdminEditor(viewer, team, adminContext));
+            setBackButton(viewer, gui, () -> openAdminEditor(viewer, team, adminContext));
         } else {
             gui.getInventory().setItem(lastRowStart + 4, emptyInfoPane());
         }
         if (start + pageSize < members.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(currentPage + 1, maxPage));
+            gui.getInventory().setItem(nextSlot, nextPageButton(viewer, currentPage + 1, maxPage));
             gui.setAction(nextSlot, event -> {
                 pageSound(viewer, adminContext != null, true);
                 openInfo(viewer, team, currentPage + 1, adminContext);
             });
         }
-        viewer.openInventory(gui.getInventory());
+        openGui(viewer, gui);
         screenOpen(viewer, adminContext != null);
     }
 
@@ -981,7 +1031,7 @@ public final class GuiService {
         }
 
         gui.getInventory().setItem(22, emptyInfoPane());
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, true);
     }
 
@@ -997,11 +1047,12 @@ public final class GuiService {
                 .toList();
         List<EntryBrowserRequest.Entry> entries = new ArrayList<>(teams.size());
         for (Team team : teams) {
-            entries.add(EntryBrowserRequest.Entry.of(String.valueOf(team.getId()), item(Material.BOOK, accent(team.getName()), List.of(
+            entries.add(EntryBrowserRequest.Entry.of(String.valueOf(team.getId()), EditorItemFactory.button(player, Material.BOOK, FoStyle.THEME,
+                    FoText.plain(accent(team.getName())), List.of(
                     "#ffffffTag: " + tag(team),
                     "#ffffffOwner: " + playerName(team.getOwnerId()),
                     "#ffffffScore: " + team.getScore(),
-                    "#ffffffBalance: " + Text.money(team.getBalance())))));
+                    "#ffffffBalance: " + Text.money(team.getBalance())), "edit team")));
         }
         EntryBrowserMenus.open(player, EntryBrowserRequest.builder()
                 .title(plugin.getConfig().getString("gui.titles.browser", "Browser"))
@@ -1010,7 +1061,8 @@ public final class GuiService {
                 .filter(normalizedSearch)
                 .buttons(buttons)
                 .showBack(true)
-                .addButton(item(Material.ANVIL, "#03fc88Create Team", List.of("#ffffffCreate a team without an owner.")))
+                .addButton(EditorItemFactory.button(player, Material.ANVIL, FoStyle.GOOD, "Create Team",
+                        List.of("#ffffffCreate a team without an owner."), "create team"))
                 .build());
         screenOpen(player, true);
     }
@@ -1166,8 +1218,8 @@ public final class GuiService {
             gui.getInventory().setItem(slot, configSettingItem(setting));
             gui.setAction(slot, event -> editConfigSetting(player, category.id(), setting));
         }
-        setBackButton(gui, () -> openEditorHome(player));
-        player.openInventory(gui.getInventory());
+        setBackButton(player, gui, () -> openEditorHome(player));
+        openGui(player, gui);
         screenOpen(player, true);
     }
 
@@ -1530,8 +1582,8 @@ public final class GuiService {
         gui.setAction(16, event -> openSharedChest(player, team, true));
         gui.getInventory().setItem(22, item(Material.REDSTONE_BLOCK, "#ff5d73Purge Team", List.of("#ffffffClick to permanently delete this team.")));
         gui.setAction(22, event -> openConfirm(player, team, true, adminContext, ConfirmBackTarget.ADMIN_EDITOR));
-        setBackButton(gui, () -> openBrowser(player, adminContext.browserPage(), adminContext.browserSearch()));
-        player.openInventory(gui.getInventory());
+        setBackButton(player, gui, () -> openBrowser(player, adminContext.browserPage(), adminContext.browserSearch()));
+        openGui(player, gui);
         screenOpen(player, true);
     }
 
@@ -1562,17 +1614,21 @@ public final class GuiService {
             plugin.getMessages().send(player, "upgrades-economy-disabled");
             return;
         }
-        FoGui gui = gui(27, plugin.getConfig().getString("gui.titles.upgrades", "Team Upgrades"));
+        FoGui gui = adminView
+                ? gui(27, plugin.getConfig().getString("gui.titles.upgrades", "Team Upgrades"))
+                : publicGui(27, player, "upgrades", "ᴛᴇᴀᴍ ᴜᴘɢʀᴀᴅᴇs");
         fill(gui);
 
         double sizeCost = plugin.getTeamService().nextMemberCapUpgradeCost(team);
         boolean sizeMaxed = sizeCost < 0;
-        gui.getInventory().setItem(11, item(sizeMaxed ? Material.BARRIER : Material.PLAYER_HEAD, accent("Team Size Upgrade"), List.of(
+        gui.getInventory().setItem(11, screenItem(player, adminView, "upgrades", "size",
+                sizeMaxed ? Material.BARRIER : Material.PLAYER_HEAD, accent("Team Size Upgrade"), List.of(
                 "#ffffffCurrent cap: #03fc88" + team.getMemberCap(),
                 sizeMaxed ? "#ff5d73Already at maximum cap." : "#ffffffNext cap: #03fc88" + (team.getMemberCap() + 1),
                 sizeMaxed ? "#a7b8b0No further upgrades available." : "#ffffffCost: #03fc88" + Text.money(sizeCost),
                 sizeMaxed ? "#a7b8b0This upgrade is complete." : "#ffffffClick to purchase this upgrade."
-        )));
+        ), Map.of("current", String.valueOf(team.getMemberCap()), "next", String.valueOf(team.getMemberCap() + 1),
+                "cost", Text.money(sizeCost))));
         gui.setAction(11, event -> {
             if (!adminView && !canManageUpgrades(team, player.getUniqueId())) {
                 plugin.getMessages().send(player, "no-permission-role");
@@ -1616,13 +1672,15 @@ public final class GuiService {
 
         double echestCost = plugin.getTeamService().nextEchestRowsUpgradeCost(team);
         boolean echestMaxed = echestCost < 0;
-        gui.getInventory().setItem(15, item(echestMaxed ? Material.BARRIER : Material.ENDER_CHEST, accent("Team Echest Upgrade"), List.of(
+        gui.getInventory().setItem(15, screenItem(player, adminView, "upgrades", "echest",
+                echestMaxed ? Material.BARRIER : Material.ENDER_CHEST, accent("Team Echest Upgrade"), List.of(
                 "#ffffffCurrent rows: #03fc88" + team.getEchestRows(),
                 "#ffffffMaximum rows: #03fc88" + plugin.getTeamService().maxEchestRows(),
                 echestMaxed ? "#ff5d73Already at maximum rows." : "#ffffffNext rows: #03fc88" + (team.getEchestRows() + 1),
                 echestMaxed ? "#a7b8b0No further upgrades available." : "#ffffffCost: #03fc88" + Text.money(echestCost),
                 echestMaxed ? "#a7b8b0This upgrade is complete." : "#ffffffClick to purchase this upgrade."
-        )));
+        ), Map.of("current", String.valueOf(team.getEchestRows()), "max", String.valueOf(plugin.getTeamService().maxEchestRows()),
+                "next", String.valueOf(team.getEchestRows() + 1), "cost", Text.money(echestCost))));
         gui.setAction(15, event -> {
             if (!adminView && !canManageUpgrades(team, player.getUniqueId())) {
                 plugin.getMessages().send(player, "no-permission-role");
@@ -1664,14 +1722,14 @@ public final class GuiService {
             }
         });
 
-        setBackButton(gui, () -> {
+        setBackButton(player, gui, () -> {
             if (adminView) {
                 openSettings(player, team, true);
             } else {
                 openDashboard(player);
             }
         });
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, adminView);
     }
 
@@ -1732,9 +1790,12 @@ public final class GuiService {
     }
 
     private void openConfirm(Player player, Team team, boolean adminView, AdminEditorContext adminContext, ConfirmBackTarget backTarget) {
-        FoGui gui = gui(27, plugin.getConfig().getString("gui.titles.confirm", "Confirm"));
+        FoGui gui = adminView
+                ? gui(27, plugin.getConfig().getString("gui.titles.confirm", "Confirm"))
+                : publicGui(27, player, "confirm", "ᴄᴏɴꜰɪʀᴍ");
         fill(gui);
-        gui.getInventory().setItem(11, item(Material.LIME_DYE, "#3ecf8eConfirm", List.of("#ffffffClick to continue.")));
+        gui.getInventory().setItem(11, screenItem(player, adminView, "confirm", "confirm", Material.LIME_DYE,
+                "#3ecf8eConfirm", List.of("#ffffffClick to continue.")));
         gui.setAction(11, event -> {
             try {
                 if (!adminView) {
@@ -1760,7 +1821,8 @@ public final class GuiService {
                 plugin.getMessages().send(player, "action-failed");
             }
         });
-        gui.getInventory().setItem(15, item(Material.RED_DYE, "#ff5d73Cancel", List.of("#ffffffReturn without changing anything.")));
+        gui.getInventory().setItem(15, screenItem(player, adminView, "confirm", "cancel", Material.RED_DYE,
+                "#ff5d73Cancel", List.of("#ffffffReturn without changing anything.")));
         gui.setAction(15, event -> {
             prepareBackNavigation(player);
             if (adminView) {
@@ -1773,7 +1835,7 @@ public final class GuiService {
                 openSettings(player, team, false);
             }
         });
-        player.openInventory(gui.getInventory());
+        openGui(player, gui);
         screenOpen(player, adminView);
     }
 
@@ -2007,8 +2069,45 @@ public final class GuiService {
         return new FoGui(size, title(title));
     }
 
+    private FoGui publicGui(int size, Player viewer, String screen, String fallbackTitle) {
+        return new FoGui(size, GuiTitles.format(plugin.publicGui().title(screen, fallbackTitle)));
+    }
+
+    private ItemStack publicItem(Player viewer, String screen, String key, Material material,
+            String name, List<String> lore) {
+        return publicItem(viewer, screen, key, material, name, lore, Map.of());
+    }
+
+    private ItemStack publicItem(Player viewer, String screen, String key, Material material,
+            String name, List<String> lore, Map<String, String> placeholders) {
+        return plugin.publicGui().button(viewer, screen, key, material, name, lore, placeholders);
+    }
+
+    private ItemStack screenItem(Player viewer, boolean adminView, String screen, String key,
+            Material material, String name, List<String> lore) {
+        return screenItem(viewer, adminView, screen, key, material, name, lore, Map.of());
+    }
+
+    private ItemStack screenItem(Player viewer, boolean adminView, String screen, String key,
+            Material material, String name, List<String> lore, Map<String, String> placeholders) {
+        return adminView ? item(material, name, lore) : publicItem(viewer, screen, key, material, name, lore, placeholders);
+    }
+
+    private void openGui(Player player, FoGui gui) {
+        gui.renderActionItems(player);
+        gui.renderInformationItems(player);
+        for (int slot = 0; slot < gui.getInventory().getSize(); slot++) {
+            ItemStack item = gui.getInventory().getItem(slot);
+            if (item != null) {
+                gui.getInventory().setItem(slot, DialogIcons.forViewer(player, item));
+            }
+        }
+        player.openInventory(gui.getInventory());
+    }
+
     private SharedChestHolder createSharedChest(Team team) {
-        SharedChestHolder holder = new SharedChestHolder(team.getId(), team.getEchestRows(), title("Team Chest"));
+        SharedChestHolder holder = new SharedChestHolder(team.getId(), team.getEchestRows(),
+                GuiTitles.format(plugin.publicGui().title("chest", "ᴛᴇᴀᴍ ᴄʜᴇsᴛ")));
         Inventory inventory = holder.getInventory();
         for (int slot = 0; slot < Math.min(inventory.getSize(), team.getEchestContents().size()); slot++) {
             inventory.setItem(slot, cloneItem(team.getEchestContents().get(slot)));
@@ -2033,6 +2132,9 @@ public final class GuiService {
     }
 
     private ItemStack item(Material material, String name, List<String> lore) {
+        // FoGui applies the viewer-aware button/information wrapper immediately
+        // before opening. Keeping this intermediate item icon-free prevents the
+        // material sprite from being added once here and again by that wrapper.
         return EditorItemFactory.item(material, name, lore);
     }
 
@@ -2040,27 +2142,27 @@ public final class GuiService {
         return EditorItemFactory.item(Material.GRAY_STAINED_GLASS_PANE, " ", List.of());
     }
 
-    private ItemStack backButton() {
-        return buttons.back();
+    private ItemStack backButton(Player player) {
+        return buttons.back(player);
     }
 
-    private void setBackButton(FoGui gui, Runnable action) {
+    private void setBackButton(Player player, FoGui gui, Runnable action) {
         int slot = gui.getInventory().getSize() - 5;
-        gui.getInventory().setItem(slot, backButton());
+        gui.getInventory().setItem(slot, backButton(player));
         gui.setAction(slot, event -> {
-            if (event.getWhoClicked() instanceof Player player) {
-                pendingBackNavigations.add(player.getUniqueId());
+            if (event.getWhoClicked() instanceof Player clickedPlayer) {
+                pendingBackNavigations.add(clickedPlayer.getUniqueId());
             }
             action.run();
         });
     }
 
-    private ItemStack previousPageButton(int targetPage, int maxPage) {
-        return buttons.previousPage(Math.max(0, targetPage), Math.max(0, maxPage));
+    private ItemStack previousPageButton(Player viewer, int targetPage, int maxPage) {
+        return buttons.previousPage(viewer, Math.max(0, targetPage), Math.max(0, maxPage));
     }
 
-    private ItemStack nextPageButton(int targetPage, int maxPage) {
-        return buttons.nextPage(Math.max(0, targetPage), Math.max(0, maxPage));
+    private ItemStack nextPageButton(Player viewer, int targetPage, int maxPage) {
+        return buttons.nextPage(viewer, Math.max(0, targetPage), Math.max(0, maxPage));
     }
 
     private ItemStack searchButton(String filter) {

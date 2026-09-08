@@ -1,0 +1,176 @@
+# Player-facing FoTeams GUI presentation. Inventory sizes, slots, actions, and
+# team-owned chest contents remain in Java/data and are intentionally not here.
+filler:
+  material: GRAY_STAINED_GLASS_PANE
+  custom-model-data: ''
+  name: ' '
+  lore: []
+
+titles:
+  dashboard: "ᴛᴇᴀᴍs"
+  settings: "ᴛᴇᴀᴍ sᴇᴛᴛɪɴɢs"
+  members: "ᴍᴇᴍʙᴇʀs"
+  warps: "ᴡᴀʀᴘs"
+  info: "ᴛᴇᴀᴍ ɪɴꜰᴏ"
+  relations: "ʀᴇʟᴀᴛɪᴏɴs"
+  transfer-ownership: "ᴛʀᴀɴsꜰᴇʀ ᴏᴡɴᴇʀsʜɪᴘ"
+  confirm: "ᴄᴏɴꜰɪʀᴍ"
+  upgrades: "ᴛᴇᴀᴍ ᴜᴘɢʀᴀᴅᴇs"
+  chest: "ᴛᴇᴀᴍ ᴄʜᴇsᴛ"
+
+buttons:
+  dashboard:
+    create:
+      material: EMERALD
+      custom-model-data: ''
+      name: ':emerald: #03fc88Create Team'
+      lore: ['#ffffffCreate your own team.', '#a7b8b0Click to type a team name.']
+    invites:
+      material: WRITABLE_BOOK
+      custom-model-data: ''
+      name: ':book: #03fc88Invites'
+      lore: ['#ffffffNo pending team invites.']
+    info:
+      material: NAME_TAG
+      name: ':name_tag: #03fc88Team Info'
+      lore: ['#ffffffView your team information.']
+    settings:
+      material: COMPARATOR
+      name: ':comparator: #03fc88Settings'
+      lore: ['#ffffffManage your team.']
+    members:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88Members'
+      lore: ['#ffffffView and manage team members.']
+    warps:
+      material: ENDER_PEARL
+      name: ':ender_pearl: #03fc88Warps'
+      lore: ['#ffffffManage team home and warps.']
+    score-top:
+      material: EMERALD
+      name: ':emerald: #03fc88Score Top'
+      lore: ['#ffffffView the team score leaderboard.']
+    balance:
+      material: GOLD_INGOT
+      name: ':gold_ingot: #03fc88Balance'
+      lore: ['#ffffffDeposit or withdraw team funds.']
+    shared-chest:
+      material: ENDER_CHEST
+      name: ':ender_chest: #03fc88Shared Chest'
+      lore: ['#ffffffOpen your team ender chest.']
+    upgrades:
+      material: ANVIL
+      name: ':anvil: #03fc88Upgrades'
+      lore: ['#ffffffUpgrade team size and shared chest size.']
+
+  settings:
+    name:
+      material: NAME_TAG
+      name: ':name_tag: #03fc88Name'
+      lore: ['#ffffffCurrent: {team}', '#ffffffClick to rename.']
+    tag:
+      material: OAK_SIGN
+      name: ':oak_sign: #03fc88Tag'
+      lore: ['#ffffffCurrent: {tag}', '#ffffffClick to edit the tag.']
+    description:
+      material: BOOK
+      name: ':book: #03fc88Description'
+      lore: ['#ffffffCurrent: {description}', '#ffffffClick to edit.']
+    tag-color:
+      material: LEATHER_CHESTPLATE
+      name: ':leather_chestplate: #03fc88Tag Color'
+      lore: ['#ffffffCurrent: {color}', '#ffffffClick to change the tag color.']
+    relations:
+      material: LEAD
+      name: ':lead: #03fc88Relations'
+      lore: ['#ffffffManage allies and enemies.']
+    transfer:
+      material: TOTEM_OF_UNDYING
+      name: ':totem_of_undying: #03fc88Transfer Ownership'
+      lore: ['#ffffffChoose the next team owner.', '#a7b8b0Requires transfer permission.']
+    pvp-enabled:
+      material: LIME_DYE
+      name: ':lime_dye: #3ecf8eTeam PvP Protection Enabled'
+      lore: ['#ffffffEnabled: teammates cannot damage each other.', '#ffffffClick to toggle.']
+    pvp-disabled:
+      material: GRAY_DYE
+      name: ':gray_dye: #ff5d73Team PvP Protection Disabled'
+      lore: ['#ffffffDisabled: teammates can damage each other.', '#ffffffClick to toggle.']
+    disband:
+      material: REDSTONE_BLOCK
+      name: ':redstone_block: #ff5d73Disband Team'
+      lore: ['#ffffffClick to confirm.']
+
+  members:
+    header:
+      material: NETHER_STAR
+      name: ':nether_star: #03fc88Team Members'
+      lore: ['#ffffffManage your team members.']
+    empty:
+      material: GRAY_DYE
+      name: ':gray_dye: #a7b8b0No Members'
+      lore: ['#ffffffThis team does not currently have members.']
+
+  relations:
+    entry:
+      material: GRAY_WOOL
+      name: ':gray_wool: #03fc88{team}'
+      lore: ['#ffffffStatus: {status}', '#ffffffLeft: ally | Right: enemy | Shift-right: clear']
+    empty:
+      material: PAPER
+      name: ':paper: #ff5d73No Teams Found'
+      lore: ['#ffffffThere are no other teams to manage.']
+
+  transfer-ownership:
+    empty:
+      material: GRAY_DYE
+      name: ':gray_dye: #a7b8b0No Transfer Targets'
+      lore: ['#ffffffInvite another player before transferring ownership.']
+
+  warps:
+    home:
+      material: RECOVERY_COMPASS
+      name: ':recovery_compass: #03fc88Team Home'
+      lore: ['#ffffffHome is ready.', '#ffffffLeft-click: teleport', '#ffffffRight-click: set home', '#ffffffShift-right: delete home']
+    warp:
+      material: ENDER_PEARL
+      name: ':ender_pearl: #03fc88{warp}'
+      lore: ['#ffffffLeft-click: teleport', '#ffffffRight-click: delete warp']
+    create:
+      material: ANVIL
+      name: ':anvil: #03fc88Create Warp'
+      lore: ['#ffffffClick to create a new warp at your location.']
+
+  info:
+    team:
+      material: NAME_TAG
+      name: ':name_tag: #03fc88{team}'
+      lore: ['#ffffffTag: {tag}', '#ffffffDescription: {description}', '#ffffffScore: {score}', '#ffffffBalance: {balance}']
+    allies:
+      material: BELL
+      name: ':bell: #3ecf8eAllies'
+      lore: ['#ffffffAllies: #a7b8b0None']
+    size:
+      material: PAPER
+      name: ':paper: #03fc88Team Size'
+      lore: ['#ffffffMembers: {current}/{max}']
+
+  upgrades:
+    size:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88Team Size Upgrade'
+      lore: ['#ffffffCurrent cap: {current}', '#ffffffNext cap: {next}', '#ffffffCost: {cost}', '#ffffffClick to purchase this upgrade.']
+    echest:
+      material: ENDER_CHEST
+      name: ':ender_chest: #03fc88Team Echest Upgrade'
+      lore: ['#ffffffCurrent rows: {current}', '#ffffffMaximum rows: {max}', '#ffffffNext rows: {next}', '#ffffffCost: {cost}', '#ffffffClick to purchase this upgrade.']
+
+  confirm:
+    confirm:
+      material: LIME_DYE
+      name: ':lime_dye: #3ecf8eConfirm'
+      lore: ['#ffffffClick to continue.']
+    cancel:
+      material: RED_DYE
+      name: ':red_dye: #ff5d73Cancel'
+      lore: ['#ffffffReturn without changing anything.']

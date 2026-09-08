@@ -67,7 +67,7 @@ public final class CoreInputGuiService implements InputGuiService {
             onCancel.run();
         };
 
-        boolean nativeAttempt = dialogs.support().canUseNativeDialogs();
+        boolean nativeAttempt = dialogs.support().canUseNativeDialogs(player);
         boolean suppressedClose = false;
         if (nativeAttempt) {
             suppressedClose = plugin.getGuiService().suppressNextInventoryClose(player);

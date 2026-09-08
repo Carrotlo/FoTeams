@@ -49,13 +49,13 @@ public final class PaperBalanceDialogService implements BalanceDialogService {
     }
 
     @Override
-    public boolean canOpenNative() {
-        return support.canUseNativeDialogs();
+    public boolean canOpenNative(Player player) {
+        return support.canUseNativeDialogs(player);
     }
 
     @Override
     public boolean open(Player player, BalanceDialogRequest request, Consumer<BalanceDialogAction> onAction) {
-        if (!canOpenNative() || player == null || !player.isOnline() || request == null) {
+        if (!canOpenNative(player) || player == null || !player.isOnline() || request == null) {
             return false;
         }
 

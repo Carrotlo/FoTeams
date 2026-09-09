@@ -175,7 +175,7 @@ public final class GuiService {
             gui.setAction(28, event -> player.performCommand("team top"));
             gui.getInventory().setItem(30, publicItem(player, "dashboard", "balance", Material.GOLD_INGOT, accent("Balance"), List.of(
                     "#ffffffBank: " + Text.money(team.getBalance()),
-                    plugin.getEconomyService().isEnabled() ? "#ffffffClick to deposit or withdraw." : "#ff5d73Vault not installed.")));
+                    plugin.getEconomyService().isAvailable() ? "#ffffffClick to deposit or withdraw." : "#ff5d73Vault not installed.")));
             gui.setAction(30, event -> openBalanceDialog(player, team));
             gui.getInventory().setItem(32, publicItem(player, "dashboard", "shared-chest", Material.ENDER_CHEST, accent("Shared Chest"), List.of("#ffffffOpen your team ender chest.")));
             gui.setAction(32, event -> openSharedChest(player, team, false));
@@ -187,7 +187,7 @@ public final class GuiService {
     }
 
     private void openBalanceDialog(Player player, Team team) {
-        if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
             plugin.getMessages().send(player, "economy-disabled");
             return;
         }
@@ -1610,7 +1610,7 @@ public final class GuiService {
             plugin.getMessages().send(player, "no-permission-role");
             return;
         }
-        if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
             plugin.getMessages().send(player, "upgrades-economy-disabled");
             return;
         }
@@ -1634,7 +1634,7 @@ public final class GuiService {
                 plugin.getMessages().send(player, "no-permission-role");
                 return;
             }
-            if (!plugin.getEconomyService().isEnabled()) {
+            if (!plugin.getEconomyService().isAvailable()) {
                 plugin.getMessages().send(player, "upgrades-economy-disabled");
                 return;
             }
@@ -1686,7 +1686,7 @@ public final class GuiService {
                 plugin.getMessages().send(player, "no-permission-role");
                 return;
             }
-            if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
                 plugin.getMessages().send(player, "upgrades-economy-disabled");
                 return;
             }
@@ -2094,8 +2094,6 @@ public final class GuiService {
     }
 
     private void openGui(Player player, FoGui gui) {
-        gui.renderActionItems(player);
-        gui.renderInformationItems(player);
         for (int slot = 0; slot < gui.getInventory().getSize(); slot++) {
             ItemStack item = gui.getInventory().getItem(slot);
             if (item != null) {
@@ -2125,21 +2123,18 @@ public final class GuiService {
 
     private void fill(FoGui gui) {
         Material filler = Material.matchMaterial(plugin.getConfig().getString("gui.filler-material", "GRAY_STAINED_GLASS_PANE"));
-        ItemStack pane = EditorItemFactory.item(filler == null ? Material.GRAY_STAINED_GLASS_PANE : filler, " ", List.of());
+        ItemStack pane = EditorItemFactory.templateItem(filler == null ? Material.GRAY_STAINED_GLASS_PANE : filler, " ", List.of());
         for (int slot = 0; slot < gui.getInventory().getSize(); slot++) {
             gui.getInventory().setItem(slot, pane);
         }
     }
 
     private ItemStack item(Material material, String name, List<String> lore) {
-        // FoGui applies the viewer-aware button/information wrapper immediately
-        // before opening. Keeping this intermediate item icon-free prevents the
-        // material sprite from being added once here and again by that wrapper.
-        return EditorItemFactory.item(material, name, lore);
+        return EditorItemFactory.templateItem(material, name, lore);
     }
 
     private ItemStack emptyInfoPane() {
-        return EditorItemFactory.item(Material.GRAY_STAINED_GLASS_PANE, " ", List.of());
+        return EditorItemFactory.templateItem(Material.GRAY_STAINED_GLASS_PANE, " ", List.of());
     }
 
     private ItemStack backButton(Player player) {

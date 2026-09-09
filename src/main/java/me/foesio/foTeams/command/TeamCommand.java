@@ -797,7 +797,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         if (team == null) {
             return true;
         }
-        if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
             plugin.getMessages().send(player, "economy-disabled");
             playCommandError(player);
             return true;
@@ -807,7 +807,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean balanceTop(Player player) {
-        if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
             plugin.getMessages().send(player, "economy-disabled");
             playCommandError(player);
             return true;
@@ -826,7 +826,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         if (team == null) {
             return true;
         }
-        if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
             plugin.getMessages().send(player, "economy-disabled");
             playCommandError(player);
             return true;
@@ -849,7 +849,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     }
 
     public boolean depositAmount(Player player, Team team, double amount) {
-        if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
             plugin.getMessages().send(player, "economy-disabled");
             playCommandError(player);
             return true;
@@ -891,7 +891,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         if (team == null) {
             return true;
         }
-        if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
             plugin.getMessages().send(player, "economy-disabled");
             playCommandError(player);
             return true;
@@ -914,7 +914,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     }
 
     public boolean withdrawAmount(Player player, Team team, double amount) throws SQLException {
-        if (!plugin.getEconomyService().isEnabled()) {
+        if (!plugin.getEconomyService().isAvailable()) {
             plugin.getMessages().send(player, "economy-disabled");
             playCommandError(player);
             return true;

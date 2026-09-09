@@ -2,7 +2,9 @@ package me.foesio.foTeams;
 
 import me.foesio.core.FoCoreContext;
 import me.foesio.core.FoPluginCore;
+import me.foesio.core.economy.VaultEconomyBridge;
 import me.foesio.core.dialog.NativeDialogConfigDefaults;
+import me.foesio.core.dialog.DialogIcons;
 import me.foesio.core.message.FoMessageMigrations;
 import me.foesio.core.message.FoMessageService;
 import me.foesio.core.sound.FoAdminSounds;
@@ -24,7 +26,6 @@ import me.foesio.foTeams.listener.ChatListener;
 import me.foesio.foTeams.listener.CombatListener;
 import me.foesio.foTeams.listener.GuiListener;
 import me.foesio.foTeams.listener.PlayerListener;
-import me.foesio.foTeams.service.EconomyService;
 import me.foesio.foTeams.service.PromptService;
 import me.foesio.foTeams.service.RolePermissionService;
 import me.foesio.foTeams.service.SwearFilterService;
@@ -70,7 +71,7 @@ public final class FoTeams extends JavaPlugin {
     private Database database;
     private TeamRepository repository;
     private TeamService teamService;
-    private EconomyService economyService;
+    private VaultEconomyBridge economyService;
     private PromptService promptService;
     private TeamChatService teamChatService;
     private TeamLevelService teamLevelService;
@@ -125,7 +126,7 @@ public final class FoTeams extends JavaPlugin {
         repository = new TeamRepository(database);
         teamService = createTeamService();
         startTeamLevelAutosaveTask();
-        economyService = new EconomyService(this);
+        economyService = core.createVaultEconomy();
         promptService = new PromptService();
         inputGuiService = InputGuiServices.create(this, core);
         teamChatService = new TeamChatService();
@@ -201,7 +202,7 @@ public final class FoTeams extends JavaPlugin {
     private void migrateSprites() {
         messages.migrateToVersion(core.migrations(), 1, config -> {
             boolean changed = false;
-            changed |= FoMessageService.addMissingToken(config, "tokens.prefix", ":shield:", null);
+            changed |= FoMessageService.addMissingToken(config, "tokens.prefix", ":diamond_helmet:", null);
             changed |= FoMessageService.addMissingToken(config, "team-created", ":emerald:");
             changed |= FoMessageService.addMissingToken(config, "team-disbanded", ":lava_bucket:");
             changed |= FoMessageService.addMissingToken(config, "team-deleted", ":lava_bucket:");
@@ -226,6 +227,18 @@ public final class FoTeams extends JavaPlugin {
                 return false;
             }
             config.set("tokens.prefix", ":diamond_helmet: {theme}FoTeams &8» {muted}");
+            return true;
+        });
+        messages.migrateToVersion(core.migrations(), 3, config -> {
+            String prefix = config.getString("tokens.prefix");
+            if (prefix == null || !DialogIcons.containsToken(prefix, ":shield:")) {
+                return false;
+            }
+            String cleaned = prefix.replaceAll("(?i)(?::shield:|<sprite:shield>)", "").stripLeading();
+            if (!DialogIcons.containsToken(cleaned, ":diamond_helmet:")) {
+                cleaned = ":diamond_helmet: " + cleaned;
+            }
+            config.set("tokens.prefix", cleaned);
             return true;
         });
         messages.reload();
@@ -297,7 +310,7 @@ public final class FoTeams extends JavaPlugin {
         rolePermissions = new RolePermissionService(pluginConfigs.permissions());
         teamService = createTeamService();
         startTeamLevelAutosaveTask();
-        economyService.hook();
+        economyService = core.createVaultEconomy();
         registerPlaceholders();
     }
 
@@ -540,7 +553,7 @@ public final class FoTeams extends JavaPlugin {
         return teamService;
     }
 
-    public EconomyService getEconomyService() {
+    public VaultEconomyBridge getEconomyService() {
         return economyService;
     }
 

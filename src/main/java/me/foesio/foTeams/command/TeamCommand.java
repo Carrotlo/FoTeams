@@ -322,7 +322,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         if (plugin.getConfig().getBoolean("team-pvp-force-disable-all", false)) {
-            player.sendMessage(plugin.getMessages().renderTemplate(
+            player.sendMessage(plugin.getMessages().renderTemplateComponent(player,
                     "{prefix}{bad}Team PvP setting is locked while {white}team-pvp-force-disable-all{bad} is true. Teammates can always damage each other.",
                     Map.of()
             ));
@@ -744,10 +744,11 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean top(Player player) {
-        player.sendMessage(plugin.getMessages().renderTemplate("{prefix}{theme}Top Kills", Map.of()));
+        player.sendMessage(plugin.getMessages().renderTemplateComponent(player, "{prefix}{theme}Top Kills", Map.of()));
         int rank = 1;
         for (Team team : plugin.getTeamService().sortedByScore().stream().limit(10).toList()) {
-            player.sendMessage(plugin.getMessages().renderTemplate("{muted}#" + rank + " {white}" + team.getName() + " {muted}- {theme}" + team.getScore(), Map.of()));
+            player.sendMessage(plugin.getMessages().renderTemplateComponent(player,
+                    "{muted}#" + rank + " {white}" + team.getName() + " {muted}- {theme}" + team.getScore(), Map.of()));
             rank++;
         }
         return true;
@@ -802,7 +803,8 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
             playCommandError(player);
             return true;
         }
-        player.sendMessage(plugin.getMessages().renderTemplate("{prefix}{white}Team bank: {theme}" + Text.money(team.getBalance()), Map.of()));
+        player.sendMessage(plugin.getMessages().renderTemplateComponent(player,
+                "{prefix}{white}Team bank: {theme}" + Text.money(team.getBalance()), Map.of()));
         return true;
     }
 
@@ -812,10 +814,11 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
             playCommandError(player);
             return true;
         }
-        player.sendMessage(plugin.getMessages().renderTemplate("{prefix}{theme}Top Team Balances", Map.of()));
+        player.sendMessage(plugin.getMessages().renderTemplateComponent(player, "{prefix}{theme}Top Team Balances", Map.of()));
         int rank = 1;
         for (Team team : plugin.getTeamService().sortedByBalance().stream().limit(10).toList()) {
-            player.sendMessage(plugin.getMessages().renderTemplate("{muted}#" + rank + " {white}" + team.getName() + " {muted}- {theme}" + Text.money(team.getBalance()), Map.of()));
+            player.sendMessage(plugin.getMessages().renderTemplateComponent(player,
+                    "{muted}#" + rank + " {white}" + team.getName() + " {muted}- " + "{theme}" + Text.money(team.getBalance()), Map.of()));
             rank++;
         }
         return true;

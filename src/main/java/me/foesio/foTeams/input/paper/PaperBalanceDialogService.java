@@ -63,7 +63,7 @@ public final class PaperBalanceDialogService implements BalanceDialogService {
             BalanceDialogConfig config = BalanceDialogConfig.load(plugin);
             Map<String, String> placeholders = placeholders(request);
             Dialog dialog = Dialog.create(builder -> builder.empty()
-                    .base(base(config, placeholders))
+                    .base(base(player, config, placeholders))
                     .type(DialogType.multiAction(actions(player, config, request, placeholders, onAction), null, config.columns())));
             ((Audience) player).showDialog(dialog);
             return true;
@@ -74,15 +74,15 @@ public final class PaperBalanceDialogService implements BalanceDialogService {
         }
     }
 
-    private DialogBase base(BalanceDialogConfig config, Map<String, String> placeholders) {
-        Component title = component(config.title(), placeholders);
+    private DialogBase base(Player player, BalanceDialogConfig config, Map<String, String> placeholders) {
+        Component title = component(player, config.title(), placeholders);
         return DialogBase.builder(title)
                 .externalTitle(title)
                 .canCloseWithEscape(config.canCloseWithEscape())
                 .pause(config.pause())
                 .afterAction(DialogBase.DialogAfterAction.CLOSE)
-                .body(body(config.body(), config.bodyWidth(), placeholders))
-                .inputs(List.of(DialogInput.text(INPUT_KEY, component(config.fieldLabel(), placeholders))
+                .body(body(player, config.body(), config.bodyWidth(), placeholders))
+                .inputs(List.of(DialogInput.text(INPUT_KEY, component(player, config.fieldLabel(), placeholders))
                         .width(config.inputWidth())
                         .labelVisible(config.labelVisible())
                         .initial(truncate(replace(config.initialValue(), placeholders), config.maxLength()))
@@ -91,15 +91,15 @@ public final class PaperBalanceDialogService implements BalanceDialogService {
                 .build();
     }
 
-    private List<DialogBody> body(List<String> lines, int width, Map<String, String> placeholders) {
+    private List<DialogBody> body(Player player, List<String> lines, int width, Map<String, String> placeholders) {
         return lines.stream()
                 .filter(line -> line != null && !line.isBlank())
-                .map(line -> body(line, width, placeholders))
+                .map(line -> body(player, line, width, placeholders))
                 .toList();
     }
 
-    private DialogBody body(String line, int width, Map<String, String> placeholders) {
-        return DialogBody.plainMessage(component(line, placeholders), width);
+    private DialogBody body(Player player, String line, int width, Map<String, String> placeholders) {
+        return DialogBody.plainMessage(component(player, line, placeholders), width);
     }
 
     private List<ActionButton> actions(Player player,
@@ -109,12 +109,12 @@ public final class PaperBalanceDialogService implements BalanceDialogService {
                                        Consumer<BalanceDialogAction> onAction) {
         List<ActionButton> buttons = new ArrayList<>();
         if (request.canDeposit()) {
-            buttons.add(button(config.depositButton(), placeholders, submitAction(player, onAction, BalanceDialogAction.Type.DEPOSIT)));
+            buttons.add(button(player, config.depositButton(), placeholders, submitAction(player, onAction, BalanceDialogAction.Type.DEPOSIT)));
         }
         if (request.canWithdraw()) {
-            buttons.add(button(config.withdrawButton(), placeholders, submitAction(player, onAction, BalanceDialogAction.Type.WITHDRAW)));
+            buttons.add(button(player, config.withdrawButton(), placeholders, submitAction(player, onAction, BalanceDialogAction.Type.WITHDRAW)));
         }
-        buttons.add(button(config.backButton(), placeholders, action(player, () -> {
+        buttons.add(button(player, config.backButton(), placeholders, action(player, () -> {
             if (onAction != null) {
                 onAction.accept(BalanceDialogAction.back());
             }
@@ -122,14 +122,14 @@ public final class PaperBalanceDialogService implements BalanceDialogService {
         return List.copyOf(buttons);
     }
 
-    private ActionButton button(BalanceDialogConfig.Button button, Map<String, String> placeholders, DialogAction action) {
+    private ActionButton button(Player player, BalanceDialogConfig.Button button, Map<String, String> placeholders, DialogAction action) {
         String label = replace(button.label(), placeholders);
         if (button.icon() != null && !button.icon().isBlank()) {
             label = DialogIcons.withIcon(label, button.icon());
         }
         return ActionButton.create(
-                component(label, Map.of()),
-                tooltip(button.tooltip(), placeholders),
+                component(player, label, Map.of()),
+                tooltip(player, button.tooltip(), placeholders),
                 Math.max(1, button.width()),
                 action
         );
@@ -170,15 +170,16 @@ public final class PaperBalanceDialogService implements BalanceDialogService {
         return value == null ? "" : value;
     }
 
-    private Component component(String text, Map<String, String> placeholders) {
-        return DialogIcons.inlineTokens(LEGACY.deserialize(plugin.getMessages().renderTemplate(text, placeholders)));
+    private Component component(Player player, String text, Map<String, String> placeholders) {
+        return DialogIcons.inlineTokens(player, LEGACY.deserialize(
+                plugin.getMessages().renderTemplateForViewer(player, text, placeholders)));
     }
 
-    private Component tooltip(String text, Map<String, String> placeholders) {
+    private Component tooltip(Player player, String text, Map<String, String> placeholders) {
         if (text == null || text.isBlank()) {
             return null;
         }
-        return component(text, placeholders);
+        return component(player, text, placeholders);
     }
 
     private Map<String, String> placeholders(BalanceDialogRequest request) {

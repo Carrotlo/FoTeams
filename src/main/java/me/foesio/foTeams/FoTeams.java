@@ -194,7 +194,7 @@ public final class FoTeams extends JavaPlugin {
                 .replaceExact(
                         "money-invalid",
                         "{prefix}{bad}That amount is not a valid number. Use digits like {white}100{bad} or {white}25.5{bad}.",
-                        "{prefix}{bad}That amount is not valid. Use {white}100{bad}, {white}25.5{bad}, {white}10k{bad}, {white}2M{bad}, {white}3b{bad}, or {white}1t{bad}."
+                        "{prefix}{bad}That amount is not valid. Use {white}100{bad}, {white}25.5{bad}, {white}10k{bad}, {white}2M{bad}, {white}1Qa{bad}, or {white}1Td{bad}."
                 )
                 .build();
     }

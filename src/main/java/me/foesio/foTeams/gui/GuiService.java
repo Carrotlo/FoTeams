@@ -1473,9 +1473,9 @@ public final class GuiService {
                         intSetting("score.prevent-repeat-farming-window-seconds", "Repeat Kill Window", Material.CLOCK, "seconds, 0 disables", 0, 86400)
                 )),
                 new ConfigCategory("upgrades", "Upgrade Costs", Material.ANVIL, List.of("#ffffffTeam size and shared chest pricing."), List.of(
-                        moneySetting("upgrade-costs.team-size.base", "Team Size Base Cost", Material.GOLD_INGOT, "number or shorthand like 50k", 0.01D, Double.NaN),
+                        moneySetting("upgrade-costs.team-size.base", "Team Size Base Cost", Material.GOLD_INGOT, "number or shorthand like 50k or 1Qa", 0.01D, Double.NaN),
                         doubleSetting("upgrade-costs.team-size.multiplier", "Team Size Multiplier", Material.EMERALD, "decimal number, minimum 1", 1D, Double.NaN),
-                        moneySetting("upgrade-costs.echest.base", "Echest Base Cost", Material.GOLD_BLOCK, "number or shorthand like 1.5m", 0.01D, Double.NaN),
+                        moneySetting("upgrade-costs.echest.base", "Echest Base Cost", Material.GOLD_BLOCK, "number or shorthand like 1.5m or 1Qa", 0.01D, Double.NaN),
                         doubleSetting("upgrade-costs.echest.multiplier", "Echest Multiplier", Material.EMERALD_BLOCK, "decimal number, minimum 1", 1D, Double.NaN)
                 )),
                 new ConfigCategory("admin", "Admin Access", Material.COMMAND_BLOCK, List.of("#ffffffAdmin editor safety toggles."), List.of(
@@ -1542,7 +1542,8 @@ public final class GuiService {
         gui.getInventory().setItem(14, item(Material.GOLD_INGOT, "#03fc88Edit Team Bank", List.of("#ffffffCurrent: " + Text.money(team.getBalance()), "#ffffffClick to set the team balance.")));
         gui.setAction(14, event -> promptText(player, "prompt-money", String.valueOf(team.getBalance()), input -> {
             try {
-                double amount = Double.parseDouble(input);
+                double amount = LargeNumberParser.parseDouble(input)
+                        .orElseThrow(() -> new NumberFormatException("Invalid money amount"));
                 if (!Double.isFinite(amount) || amount < 0) {
                     plugin.getMessages().send(player, "amount-non-negative");
                     openAdminEditor(player, team, adminContext);

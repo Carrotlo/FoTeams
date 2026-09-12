@@ -120,7 +120,7 @@ usage-unally: "{prefix}{bad}Missing team name. Use {white}/team unally <team>{ba
 usage-setwarp: "{prefix}{bad}Missing warp name. Use {white}/team setwarp <name> [password]{bad}."
 usage-deposit: "{prefix}{bad}Missing amount. Use {white}/team deposit <amount>{bad}."
 usage-withdraw: "{prefix}{bad}Missing amount. Use {white}/team withdraw <amount>{bad}."
-money-invalid: "{prefix}{bad}That amount is not valid. Use {white}100{bad}, {white}25.5{bad}, {white}10k{bad}, {white}2M{bad}, {white}3b{bad}, or {white}1t{bad}."
+money-invalid: "{prefix}{bad}That amount is not valid. Use {white}100{bad}, {white}25.5{bad}, {white}10k{bad}, {white}2M{bad}, {white}1Qa{bad}, or {white}1Td{bad}."
 amount-positive: "{prefix}{bad}The amount must be greater than zero."
 amount-non-negative: "{prefix}{bad}The amount cannot be negative."
 score-invalid: "{prefix}{bad}That score is not a valid whole number."

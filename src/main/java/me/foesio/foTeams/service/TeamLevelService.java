@@ -96,7 +96,7 @@ public final class TeamLevelService {
                     continue;
                 }
                 for (String message : rewardMessages) {
-                    member.sendMessage(plugin.getMessages().renderTemplate(message, withPlayer(baseReplacements, member)));
+                    member.sendMessage(plugin.getMessages().renderTemplateComponent(member, message, withPlayer(baseReplacements, member)));
                 }
             }
         }

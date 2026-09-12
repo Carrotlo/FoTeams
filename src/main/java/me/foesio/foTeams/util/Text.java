@@ -1,14 +1,12 @@
 package me.foesio.foTeams.util;
 
-import java.text.DecimalFormat;
+import me.foesio.core.number.NumberFormatters;
 
 public final class Text {
-    private static final DecimalFormat MONEY = new DecimalFormat("#,##0.00");
-
     private Text() {
     }
 
     public static String money(double value) {
-        return MONEY.format(value);
+        return NumberFormatters.compact(value);
     }
 }

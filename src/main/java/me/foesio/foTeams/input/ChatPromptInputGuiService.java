@@ -1,9 +1,9 @@
 package me.foesio.foTeams.input;
 
-import me.foesio.core.text.PromptNormalizer;
 import me.foesio.foTeams.FoTeams;
 import org.bukkit.entity.Player;
 
+import java.util.Map;
 import java.util.function.Consumer;
 
 public final class ChatPromptInputGuiService implements InputGuiService {
@@ -16,9 +16,11 @@ public final class ChatPromptInputGuiService implements InputGuiService {
     @Override
     public void openInput(Player player, InputPrompt prompt, Consumer<String> onSubmit, Runnable onCancel) {
         player.closeInventory();
-        plugin.getPromptService().setPrompt(player, prompt.chatPrompt(), input -> {
-            if (PromptNormalizer.isCancel(input)) {
-                plugin.getMessages().send(player, "prompt-cancelled");
+        plugin.getPromptService().setPrompt(player,
+                plugin.getMessages().renderTemplateComponent(player, prompt.chatPrompt(), Map.of(
+                        "{cancel}", plugin.publicGui().label("chat.cancel-keyword", ""))), input -> {
+            if (plugin.isCancelInput(input)) {
+                plugin.sendMessage(player, "prompt-cancelled");
                 onCancel.run();
                 return;
             }

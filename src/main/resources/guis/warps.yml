@@ -1,0 +1,183 @@
+title: "ᴡᴀʀᴘs"
+rows: 6
+filler:
+  material: "GRAY_STAINED_GLASS_PANE"
+  name: " "
+  lore: []
+  enabled: true
+entries:
+  home:
+    slots:
+      - 4
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  content:
+    slots:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+      - 37
+      - 38
+      - 39
+      - 40
+      - 41
+      - 42
+      - 43
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  previous-page:
+    slots:
+      - 45
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  back:
+    slots:
+      - 49
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  create:
+    slots:
+      - 50
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  next-page:
+    slots:
+      - 53
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+states:
+  home:
+    material: "RECOVERY_COMPASS"
+    name: ":recovery_compass: #03fc88Team Home"
+    lore:
+      - "#ffffffHome is ready."
+      - "#ffffffLeft-click: teleport"
+      - "#ffffffRight-click: set home"
+      - "#ffffffShift-right: delete home"
+  home-missing:
+    material: "RECOVERY_COMPASS"
+    name: ":recovery_compass: #03fc88Team Home"
+    lore:
+      - "#ffffffNo home set."
+      - "#ffffffLeft-click: teleport"
+      - "#ffffffRight-click: set home"
+      - "#ffffffShift-right: delete home"
+  warp:
+    material: "ENDER_PEARL"
+    name: ":ender_pearl: #03fc88{warp}"
+    lore:
+      - "#ffffffLeft-click: teleport"
+      - "#ffffffRight-click: delete warp"
+  warp-protected:
+    material: "ENDER_PEARL"
+    name: ":ender_pearl: #03fc88{warp}"
+    lore:
+      - "#ffffffProtected warp. Use /team warp <warp> <password>"
+      - "#ffffffRight-click: delete warp"
+  create:
+    material: "ANVIL"
+    name: ":anvil: #03fc88Create Warp"
+    lore:
+      - "#ffffffClick to create a new warp at your location."
+  previous-page:
+    material: "ARROW"
+    name: ":arrow: #03fc88&lPREVIOUS PAGE"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eℹ Information ↓"
+      - "&7&l | &fPage {page}/{max_page}"
+      - " "
+      - "#3ecf8e→ Click to view the previous page ←"
+  back:
+    material: "IRON_DOOR"
+    name: ":iron_door: #ffd966&lBACK"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eℹ Information ↓"
+      - "&7&l | &fReturn to the previous menu."
+      - " "
+      - "#3ecf8e→ Click to go back ←"
+  next-page:
+    material: "ARROW"
+    name: ":arrow: #03fc88&lNEXT PAGE"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eℹ Information ↓"
+      - "&7&l | &fPage {page}/{max_page}"
+      - " "
+      - "#3ecf8e→ Click to view the next page ←"

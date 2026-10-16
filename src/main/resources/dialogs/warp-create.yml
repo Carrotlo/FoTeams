@@ -8,8 +8,14 @@ body:
   - "{muted}Format: {theme}<name> [password]"
 field-label: "{white}Warp"
 initial-value: "{current}"
-confirm-button: "{good}Create"
-cancel-button: "{bad}Cancel"
+confirm-button:
+  label: "{good}Create"
+  tooltip: "Create this team warp."
+  icon: "ender_pearl"
+cancel-button:
+  label: "{bad}Cancel"
+  tooltip: "Return without creating a warp."
+  icon: "barrier"
 body-width: 300
 input-width: 300
 button-width: 100

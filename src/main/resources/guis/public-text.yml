@@ -1,0 +1,109 @@
+# Auxiliary public labels and admin navigation. Inventory screens use the generated guis/*.yml files.
+filler:
+  material: GRAY_STAINED_GLASS_PANE
+  custom-model-data: ''
+  name: ' '
+  lore: []
+navigation:
+  back:
+    material: IRON_DOOR
+    custom-model-data: ''
+    name: ':iron_door: #ffd966&lBACK'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eℹ Information ↓'
+    - '&7&l | &fReturn to the previous menu.'
+    - ' '
+    - '#3ecf8e→ Click to go back ←'
+  previous-page:
+    material: ARROW
+    custom-model-data: ''
+    name: ':arrow: #03fc88&lPREVIOUS PAGE'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eℹ Information ↓'
+    - '&7&l | &fPage {page}/{max_page}'
+    - ' '
+    - '#3ecf8e→ Click to view the previous page ←'
+  next-page:
+    material: ARROW
+    custom-model-data: ''
+    name: ':arrow: #03fc88&lNEXT PAGE'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eℹ Information ↓'
+    - '&7&l | &fPage {page}/{max_page}'
+    - ' '
+    - '#3ecf8e→ Click to view the next page ←'
+  search:
+    material: NAME_TAG
+    custom-model-data: ''
+    name: ':name_tag: #ffd966&lSEARCH'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eℹ Information ↓'
+    - '&7&l | &fChange the team filter.'
+    - ' '
+    - '#3ecf8e→ Click to set a filter ←'
+  clear-search:
+    material: MILK_BUCKET
+    custom-model-data: ''
+    name: ':milk_bucket: #03fc88&lCLEAR SEARCH'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eℹ Information ↓'
+    - '&7&l | &fClear the current filter.'
+    - ' '
+    - '#3ecf8e→ Click to clear the search ←'
+labels:
+  chat:
+    cancel-keyword: cancel
+    team-channel: TEAM
+    ally-channel: ALLY
+  unknown-team: Unknown
+  teleport:
+    home: home
+  invites:
+    entry: '#ffffff{team}'
+    separator: '  '
+  balance-action:
+    available: '#ffffffClick to deposit or withdraw.'
+    unavailable: '#ff5d73Vault not installed.'
+  bank-actions:
+    deposit-keyword: deposit
+    withdraw-keyword: withdraw
+    amount-example: '<amount>'
+    both: '{white}{deposit} {amount}{muted} or {white}{withdraw} {amount}'
+    deposit: '{white}{deposit} {amount}'
+    withdraw: '{white}{withdraw} {amount}'
+  player:
+    no-owner: None
+  roles:
+    owner: Owner
+    admin: Admin
+    member: Member
+  player-status:
+    no-owner: '#ff5d73No owner'
+    offline: '#ff5d73Offline'
+    online: '#3ecf8eOnline'
+  relations:
+    ally: ally
+    enemy: enemy
+    ally-request-received: ally request received
+    ally-request-sent: ally request sent
+    neutral: neutral
+    empty: No other teams found.
+    no-match: 'No teams match: {search}'
+  allies:
+    empty: '#ffffffAllies: #a7b8b0None'
+    header: '#ffffffAllies:'
+    entry: '#a7b8b0- {team}'
+    separator: '  '
+numbers:
+  decimal-separator: '.'
+  compact-suffixes: ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td']

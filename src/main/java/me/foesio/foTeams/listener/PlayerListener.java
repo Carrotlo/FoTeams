@@ -20,6 +20,7 @@ public final class PlayerListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         plugin.getTeamChatService().clear(event.getPlayer());
         plugin.getPromptService().removePrompt(event.getPlayer().getUniqueId());
+        plugin.getGuiService().forgetPublicSession(event.getPlayer());
     }
 
     @EventHandler

@@ -1,0 +1,16 @@
+# Native dialog for team description input.
+# Used only on compatible Paper/Paper-fork servers with native-dialogs.enabled: true.
+# Spigot and older servers use messages.yml chat prompts instead.
+# Expected input: short public team description text.
+title: "{theme}Team Description"
+body:
+  - "{muted}Type the team description players will see."
+  - "{muted}Current value: {theme}{current}"
+field-label: "{white}Description"
+initial-value: "{current}"
+confirm-button: "{good}Save"
+cancel-button: "{bad}Cancel"
+body-width: 300
+input-width: 300
+button-width: 100
+max-length: 160

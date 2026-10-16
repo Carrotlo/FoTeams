@@ -1,0 +1,174 @@
+title: "ᴛᴇᴀᴍs"
+rows: 5
+filler:
+  material: "GRAY_STAINED_GLASS_PANE"
+  name: " "
+  lore: []
+  enabled: true
+entries:
+  info:
+    slots:
+      - 10
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  settings:
+    slots:
+      - 12
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  members:
+    slots:
+      - 14
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  warps:
+    slots:
+      - 16
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  score-top:
+    slots:
+      - 28
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  balance:
+    slots:
+      - 30
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  shared-chest:
+    slots:
+      - 32
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  upgrades:
+    slots:
+      - 34
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+states:
+  info:
+    material: "NAME_TAG"
+    name: ":name_tag: #03fc88Team Info"
+    lore:
+      - "#ffffffName: #03fc88{team}"
+      - "#ffffffTag: {tag}"
+      - "#ffffffDescription: {description}"
+  settings:
+    material: "COMPARATOR"
+    name: ":comparator: #03fc88Settings"
+    lore:
+      - "#ffffffManage your team."
+  members:
+    material: "PLAYER_HEAD"
+    name: ":player_head: #03fc88Members"
+    lore:
+      - "#ffffffOwner: #03fc88{owner}"
+      - "#ffffffAdmins: #03fc88{admins}"
+      - "#ffffffMembers: #03fc88{members}"
+  warps:
+    material: "ENDER_PEARL"
+    name: ":ender_pearl: #03fc88Warps"
+    lore:
+      - "#ffffffHome and warp travel."
+      - "#ffffffWarps: #03fc88{warps}/{max_warps}"
+  score-top:
+    material: "EMERALD"
+    name: ":emerald: #03fc88Score Top"
+    lore:
+      - "#ffffffScore: #03fc88{score}"
+      - "#ffffffRank: #03fc88{rank}"
+  balance:
+    material: "GOLD_INGOT"
+    name: ":gold_ingot: #03fc88Balance"
+    lore:
+      - "#ffffffBank: #03fc88{balance}"
+      - "{balance_action}"
+  shared-chest:
+    material: "ENDER_CHEST"
+    name: ":ender_chest: #03fc88Shared Chest"
+    lore:
+      - "#ffffffOpen your team ender chest."
+  upgrades:
+    material: "ANVIL"
+    name: ":anvil: #03fc88Upgrades"
+    lore:
+      - "#ffffffUpgrade team size and shared chest size."
+  balance-unavailable:
+    material: "GOLD_INGOT"
+    name: ":gold_ingot: #03fc88Balance"
+    lore:
+      - "#ffffffBank: #03fc88{balance}"
+      - "#ff5d73Vault not installed."

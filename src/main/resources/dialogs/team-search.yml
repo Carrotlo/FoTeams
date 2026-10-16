@@ -1,0 +1,22 @@
+# Public relation search dialog. Chat fallback text is in messages.yml.
+title: "{theme}Search Teams"
+body:
+  - "{muted}Search by team name, tag, or owner."
+field-label: "{white}Search"
+initial-value: "{current}"
+placeholder: "team name, tag, or owner"
+confirm-button:
+  label: "{good}Search"
+  tooltip: "Search teams with this text."
+  icon: "spyglass"
+cancel-button:
+  label: "{bad}Cancel"
+  tooltip: "Return to relations without changing the search."
+  icon: "barrier"
+body-width: 320
+input-width: 300
+button-width: 100
+max-length: 80
+label-visible: true
+can-close-with-escape: true
+pause: false

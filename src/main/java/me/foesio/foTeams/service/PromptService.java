@@ -1,5 +1,6 @@
 package me.foesio.foTeams.service;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 
 import java.util.Map;
@@ -10,7 +11,7 @@ import java.util.function.Consumer;
 public final class PromptService {
     private final Map<UUID, Prompt> prompts = new ConcurrentHashMap<>();
 
-    public void setPrompt(Player player, String message, Consumer<String> consumer) {
+    public void setPrompt(Player player, Component message, Consumer<String> consumer) {
         prompts.put(player.getUniqueId(), new Prompt(message, consumer));
         player.sendMessage(message);
     }
@@ -23,6 +24,6 @@ public final class PromptService {
         prompts.clear();
     }
 
-    public record Prompt(String message, Consumer<String> consumer) {
+    public record Prompt(Component message, Consumer<String> consumer) {
     }
 }

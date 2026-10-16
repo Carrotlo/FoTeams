@@ -8,8 +8,14 @@ body:
   - "{muted}Current value: {theme}{current}"
 field-label: "{white}Team tag"
 initial-value: "{current}"
-confirm-button: "{good}Save"
-cancel-button: "{bad}Cancel"
+confirm-button:
+  label: "{good}Save"
+  tooltip: "Save this team tag."
+  icon: "emerald"
+cancel-button:
+  label: "{bad}Cancel"
+  tooltip: "Return without changing the team tag."
+  icon: "barrier"
 body-width: 300
 input-width: 300
 button-width: 100

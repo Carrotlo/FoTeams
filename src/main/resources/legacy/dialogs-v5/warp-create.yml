@@ -1,0 +1,16 @@
+# Native dialog for creating a team warp.
+# Used only on compatible Paper/Paper-fork servers with native-dialogs.enabled: true.
+# Spigot and older servers use messages.yml chat prompts instead.
+# Expected input: <name> [password].
+title: "{theme}Create Warp"
+body:
+  - "{muted}Use a warp name, optionally followed by a password."
+  - "{muted}Format: {theme}<name> [password]"
+field-label: "{white}Warp"
+initial-value: "{current}"
+confirm-button: "{good}Create"
+cancel-button: "{bad}Cancel"
+body-width: 300
+input-width: 300
+button-width: 100
+max-length: 80

@@ -1,0 +1,54 @@
+title: "ᴛᴇᴀᴍs"
+rows: 3
+filler:
+  material: "GRAY_STAINED_GLASS_PANE"
+  name: " "
+  lore: []
+  enabled: true
+entries:
+  create:
+    slots:
+      - 11
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  invites:
+    slots:
+      - 15
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+states:
+  create:
+    material: "EMERALD"
+    name: ":emerald: #03fc88Create Team"
+    lore:
+      - "#ffffffCreate your own team."
+      - "#a7b8b0Click to type a team name."
+  invites:
+    material: "WRITABLE_BOOK"
+    name: ":book: #03fc88Invites"
+    lore:
+      - "{invite_list}"
+      - "#a7b8b0Click to join the oldest invite."
+  invites-empty:
+    material: "WRITABLE_BOOK"
+    name: ":book: #03fc88Invites"
+    lore:
+      - "#ffffffNo pending team invites."

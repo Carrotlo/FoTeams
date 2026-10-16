@@ -23,12 +23,12 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!sender.hasPermission("foteams.admin")) {
-            plugin.getMessages().send(sender, "no-permission");
+            plugin.sendMessage(sender, "no-permission");
             plugin.getAdminSounds().updateError(sender);
             return true;
         }
         if (args.length == 0) {
-            plugin.getMessages().sendList(sender, "help-admin");
+            plugin.sendMessageList(sender, "help-admin");
             return true;
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
@@ -43,21 +43,21 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
             };
         } catch (Exception exception) {
             plugin.getLogger().log(Level.WARNING, "Admin command failed: " + sub, exception);
-            plugin.getMessages().send(sender, "invalid-input");
+            plugin.sendMessage(sender, "invalid-input");
             plugin.getAdminSounds().updateError(sender);
             return true;
         }
     }
 
     private boolean help(CommandSender sender) {
-        plugin.getMessages().sendList(sender, "help-admin");
+        plugin.sendMessageList(sender, "help-admin");
         return true;
     }
 
     private boolean reload(CommandSender sender) {
         try {
             plugin.reloadPlugin();
-            plugin.getMessages().send(sender, "reload-success");
+            plugin.sendMessage(sender, "reload-success");
             if (sender instanceof Player player) {
                 plugin.getAdminSounds().reload(player);
             }
@@ -83,13 +83,13 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length < 2) {
             plugin.getGuiService().openEditorHome(player);
-            plugin.getMessages().send(player, "editor-opened");
+            plugin.sendMessage(player, "editor-opened");
             return true;
         }
         String teamName = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
         Team team = plugin.getTeamService().byName(teamName).orElse(null);
         if (team == null) {
-            plugin.getMessages().send(player, "team-not-found");
+            plugin.sendMessage(player, "team-not-found");
             plugin.getAdminSounds().updateError(player);
             return true;
         }
@@ -103,7 +103,7 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         boolean enabled = plugin.getTeamChatService().toggleSpy(player.getUniqueId());
-        plugin.getMessages().send(player, enabled ? "chatspy-enabled" : "chatspy-disabled");
+        plugin.sendMessage(player, enabled ? "chatspy-enabled" : "chatspy-disabled");
         return true;
     }
 

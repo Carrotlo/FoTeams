@@ -9,7 +9,6 @@ body:
   - "{muted}Your balance: {white}{player_balance}"
 field-label: "{white}Amount"
 initial-value: ""
-placeholder: "100"
 deposit-button:
   label: "{good}Deposit"
   tooltip: "Deposit this amount into the team bank."
@@ -20,7 +19,7 @@ withdraw-button:
   icon: "gold_ingot"
 back-button:
   label: "{bad}Back"
-  tooltip: "Close without changing the team bank."
+  tooltip: "Return to the team menu without changing the bank."
   icon: "iron_door"
 body-width: 300
 input-width: 300

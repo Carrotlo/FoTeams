@@ -1,0 +1,305 @@
+# Player-facing FoTeams GUI presentation. Inventory sizes, slots, actions, and
+# team-owned chest contents remain in Java/data and are intentionally not here.
+# Every item section also accepts optional amount, custom-model-data, and glow.
+# Put {invites} or {allies} on its own lore line to expand the dynamic list.
+filler:
+  material: GRAY_STAINED_GLASS_PANE
+  custom-model-data: ''
+  name: ' '
+  lore: []
+
+# Shared navigation is plugin-owned here so every visible line can be translated.
+# {page}, {max_page}, {current}, and {target} are filled at render time.
+navigation:
+  back:
+    material: IRON_DOOR
+    custom-model-data: ''
+    name: ':iron_door: #ffd966&lBACK'
+    lore: ['&8ʙᴜᴛᴛᴏɴ', ' ', '&eℹ Information ↓', '&7&l | &fReturn to the previous menu.', ' ', '#3ecf8e→ Click to go back ←']
+  previous-page:
+    material: ARROW
+    custom-model-data: ''
+    name: ':arrow: #03fc88&lPREVIOUS PAGE'
+    lore: ['&8ʙᴜᴛᴛᴏɴ', ' ', '&eℹ Information ↓', '&7&l | &fPage {page}/{max_page}', ' ', '#3ecf8e→ Click to view the previous page ←']
+  next-page:
+    material: ARROW
+    custom-model-data: ''
+    name: ':arrow: #03fc88&lNEXT PAGE'
+    lore: ['&8ʙᴜᴛᴛᴏɴ', ' ', '&eℹ Information ↓', '&7&l | &fPage {page}/{max_page}', ' ', '#3ecf8e→ Click to view the next page ←']
+  search:
+    material: NAME_TAG
+    custom-model-data: ''
+    name: ':name_tag: #ffd966&lSEARCH'
+    lore: ['&8ʙᴜᴛᴛᴏɴ', ' ', '&eℹ Information ↓', '&7&l | &fChange the team filter.', ' ', '#3ecf8e→ Click to set a filter ←']
+  clear-search:
+    material: MILK_BUCKET
+    custom-model-data: ''
+    name: ':milk_bucket: #03fc88&lCLEAR SEARCH'
+    lore: ['&8ʙᴜᴛᴛᴏɴ', ' ', '&eℹ Information ↓', '&7&l | &fClear the current filter.', ' ', '#3ecf8e→ Click to clear the search ←']
+
+labels:
+  unknown-team: 'Unknown'
+  roles:
+    owner: 'Owner'
+    admin: 'Admin'
+    member: 'Member'
+  player-status:
+    no-owner: '#ff5d73No owner'
+    offline: '#ff5d73Offline'
+    online: '#3ecf8eOnline'
+  relations:
+    ally: 'ally'
+    enemy: 'enemy'
+    ally-request-received: 'ally request received'
+    ally-request-sent: 'ally request sent'
+    neutral: 'neutral'
+  allies:
+    empty: '#ffffffAllies: #a7b8b0None'
+    header: '#ffffffAllies:'
+    entry: '#a7b8b0- {team}'
+
+titles:
+  dashboard: "ᴛᴇᴀᴍs"
+  settings: "ᴛᴇᴀᴍ sᴇᴛᴛɪɴɢs"
+  members: "ᴍᴇᴍʙᴇʀs"
+  warps: "ᴡᴀʀᴘs"
+  info: "ᴛᴇᴀᴍ ɪɴꜰᴏ"
+  relations: "ʀᴇʟᴀᴛɪᴏɴs"
+  transfer-ownership: "ᴛʀᴀɴsꜰᴇʀ ᴏᴡɴᴇʀsʜɪᴘ"
+  confirm: "ᴄᴏɴꜰɪʀᴍ"
+  upgrades: "ᴛᴇᴀᴍ ᴜᴘɢʀᴀᴅᴇs"
+  chest: "ᴛᴇᴀᴍ ᴄʜᴇsᴛ"
+
+buttons:
+  dashboard:
+    create:
+      material: EMERALD
+      custom-model-data: ''
+      name: ':emerald: #03fc88Create Team'
+      lore: ['#ffffffCreate your own team.', '#a7b8b0Click to type a team name.']
+    invites:
+      material: WRITABLE_BOOK
+      custom-model-data: ''
+      name: ':book: #03fc88Invites'
+      lore: ['{invites}', '#a7b8b0Click to join the oldest invite.']
+    invites-empty:
+      material: WRITABLE_BOOK
+      custom-model-data: ''
+      name: ':book: #03fc88Invites'
+      lore: ['#ffffffNo pending team invites.']
+    info:
+      material: NAME_TAG
+      name: ':name_tag: #03fc88Team Info'
+      lore: ['#ffffffName: #03fc88{team}', '#ffffffTag: {tag}', '#ffffffDescription: {description}']
+    settings:
+      material: COMPARATOR
+      name: ':comparator: #03fc88Settings'
+      lore: ['#ffffffManage your team.']
+    members:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88Members'
+      lore: ['#ffffffOwner: #03fc88{owner}', '#ffffffAdmins: #03fc88{admins}', '#ffffffMembers: #03fc88{members}']
+    warps:
+      material: ENDER_PEARL
+      name: ':ender_pearl: #03fc88Warps'
+      lore: ['#ffffffHome and warp travel.', '#ffffffWarps: #03fc88{warps}/{max_warps}']
+    score-top:
+      material: EMERALD
+      name: ':emerald: #03fc88Score Top'
+      lore: ['#ffffffScore: #03fc88{score}', '#ffffffRank: #03fc88{rank}']
+    balance:
+      material: GOLD_INGOT
+      name: ':gold_ingot: #03fc88Balance'
+      lore: ['#ffffffBank: #03fc88{balance}', '{balance_action}']
+    shared-chest:
+      material: ENDER_CHEST
+      name: ':ender_chest: #03fc88Shared Chest'
+      lore: ['#ffffffOpen your team ender chest.']
+    upgrades:
+      material: ANVIL
+      name: ':anvil: #03fc88Upgrades'
+      lore: ['#ffffffUpgrade team size and shared chest size.']
+
+  settings:
+    name:
+      material: NAME_TAG
+      name: ':name_tag: #03fc88Name'
+      lore: ['#ffffffCurrent: {team}', '#ffffffClick to rename.']
+    tag:
+      material: OAK_SIGN
+      name: ':oak_sign: #03fc88Tag'
+      lore: ['#ffffffCurrent: {tag}', '#ffffffClick to edit the tag.']
+    description:
+      material: BOOK
+      name: ':book: #03fc88Description'
+      lore: ['#ffffffCurrent: {description}', '#ffffffClick to edit.']
+    tag-color:
+      material: LEATHER_CHESTPLATE
+      name: ':leather_chestplate: #03fc88Tag Color'
+      lore: ['#ffffffCurrent: {color}', '#ffffffClick to change the tag color.']
+    relations:
+      material: LEAD
+      name: ':lead: #03fc88Relations'
+      lore: ['#ffffffManage allies and enemies.']
+    transfer:
+      material: TOTEM_OF_UNDYING
+      name: ':totem_of_undying: #03fc88Transfer Ownership'
+      lore: ['#ffffffChoose the next team owner.', '#a7b8b0Requires transfer permission.']
+    pvp-enabled:
+      material: LIME_DYE
+      name: ':lime_dye: #3ecf8eTeam PvP Protection Enabled'
+      lore: ['#ffffffEnabled: teammates cannot damage each other.', '#ffffffClick to toggle.']
+    pvp-disabled:
+      material: GRAY_DYE
+      name: ':gray_dye: #ff5d73Team PvP Protection Disabled'
+      lore: ['#ffffffDisabled: teammates can damage each other.', '#ffffffClick to toggle.']
+    pvp-forced:
+      material: BARRIER
+      name: ':barrier: #ff5d73Team PvP Protection Forced Off'
+      lore: ['#ffffffDisabled: teammates can damage each other.', '#ff5d73Forced disabled by global config.']
+    disband:
+      material: REDSTONE_BLOCK
+      name: ':redstone_block: #ff5d73Disband Team'
+      lore: ['#ffffffClick to confirm.']
+
+  members:
+    header:
+      material: NETHER_STAR
+      name: ':nether_star: #03fc88Team Members'
+      lore: ['#ffffffLeft-click: promote or demote', '#ffffffRight-click: kick', '#ffffffShift-right: transfer ownership with confirm']
+    empty:
+      material: GRAY_DYE
+      name: ':gray_dye: #a7b8b0No Members'
+      lore: ['#ffffffThis team does not currently have members.']
+    entry-owner:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88Owner: {player}'
+      lore: ['#ffffffRole: #03fc88{role}', '#a7b8b0Current owner.']
+    entry-admin:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88Admin: {player}'
+      lore: ['#ffffffRole: #03fc88{role}', '#ffffffLeft-click to demote.', '#ffffffRight-click to kick.', '#ffffffShift-right to confirm ownership transfer.']
+    entry-member:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88Member: {player}'
+      lore: ['#ffffffRole: #03fc88{role}', '#ffffffLeft-click to promote.', '#ffffffRight-click to kick.', '#ffffffShift-right to confirm ownership transfer.']
+
+  relations:
+    entry:
+      material: GRAY_WOOL
+      name: ':gray_wool: #03fc88{team}'
+      lore: ['#ffffffStatus: {status}', '#ffffffLeft: ally | Right: enemy | Shift-right: clear']
+    entry-ally:
+      material: LIME_WOOL
+      name: ':lime_wool: #03fc88{team}'
+      lore: ['#ffffffStatus: {status}', '#ffffffLeft: ally | Right: enemy | Shift-right: clear']
+    entry-enemy:
+      material: RED_WOOL
+      name: ':red_wool: #03fc88{team}'
+      lore: ['#ffffffStatus: {status}', '#ffffffLeft: ally | Right: enemy | Shift-right: clear']
+    entry-request:
+      material: YELLOW_WOOL
+      name: ':yellow_wool: #03fc88{team}'
+      lore: ['#ffffffStatus: {status}', '#ffffffLeft: ally | Right: enemy | Shift-right: clear']
+    empty:
+      material: PAPER
+      name: ':paper: #ff5d73No Teams Found'
+      lore: ['{empty_message}']
+
+  transfer-ownership:
+    empty:
+      material: GRAY_DYE
+      name: ':gray_dye: #a7b8b0No Transfer Targets'
+      lore: ['#ffffffInvite another player before transferring ownership.']
+    owner:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88Current Owner: {player}'
+      lore: ['#ffffffCurrent role: #03fc88{role}', '#a7b8b0Already owns this team.']
+    target:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88{player}'
+      lore: ['#ffffffCurrent role: #03fc88{role}', '#ffffffClick to transfer ownership.']
+
+  warps:
+    home:
+      material: RECOVERY_COMPASS
+      name: ':recovery_compass: #03fc88Team Home'
+      lore: ['#ffffffHome is ready.', '#ffffffLeft-click: teleport', '#ffffffRight-click: set home', '#ffffffShift-right: delete home']
+    home-missing:
+      material: RECOVERY_COMPASS
+      name: ':recovery_compass: #03fc88Team Home'
+      lore: ['#ffffffNo home set.', '#ffffffLeft-click: teleport', '#ffffffRight-click: set home', '#ffffffShift-right: delete home']
+    warp:
+      material: ENDER_PEARL
+      name: ':ender_pearl: #03fc88{warp}'
+      lore: ['#ffffffLeft-click: teleport', '#ffffffRight-click: delete warp']
+    warp-protected:
+      material: ENDER_PEARL
+      name: ':ender_pearl: #03fc88{warp}'
+      lore: ['#ffffffProtected warp. Use /team warp <warp> <password>', '#ffffffRight-click: delete warp']
+    create:
+      material: ANVIL
+      name: ':anvil: #03fc88Create Warp'
+      lore: ['#ffffffClick to create a new warp at your location.']
+
+  info:
+    team:
+      material: NAME_TAG
+      name: ':name_tag: #03fc88{team}'
+      lore: ['#ffffffTag: {tag}', '#ffffffDescription: {description}', '#ffffffScore: {score}', '#ffffffBalance: {balance}']
+    team-with-level:
+      material: NAME_TAG
+      name: ':name_tag: #03fc88{team}'
+      lore: ['#ffffffTag: {tag}', '#ffffffDescription: {description}', '#ffffffScore: {score}', '#ffffffLevel: #03fc88{level} #a7b8b0({xp}/{required_xp} XP)', '#ffffffBalance: {balance}']
+    allies:
+      material: BELL
+      name: ':bell: #3ecf8eAllies'
+      lore: ['{allies}']
+    size:
+      material: PAPER
+      name: ':paper: #03fc88Team Size'
+      lore: ['#ffffffMembers: {current}/{max}']
+    member:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88{role}: {player}'
+      lore: ['#ffffffRole: #03fc88{role}', '#ffffffStatus: {status}']
+
+  upgrades:
+    size:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88Team Size Upgrade'
+      lore: ['#ffffffCurrent cap: {current}', '#ffffffNext cap: {next}', '#ffffffCost: {cost}', '#ffffffClick to purchase this upgrade.']
+    size-maxed:
+      material: BARRIER
+      name: ':barrier: #03fc88Team Size Upgrade'
+      lore: ['#ffffffCurrent cap: {current}', '#ff5d73Already at maximum cap.', '#a7b8b0No further upgrades available.', '#a7b8b0This upgrade is complete.']
+    echest:
+      material: ENDER_CHEST
+      name: ':ender_chest: #03fc88Team Echest Upgrade'
+      lore: ['#ffffffCurrent rows: {current}', '#ffffffMaximum rows: {max}', '#ffffffNext rows: {next}', '#ffffffCost: {cost}', '#ffffffClick to purchase this upgrade.']
+    echest-maxed:
+      material: BARRIER
+      name: ':barrier: #03fc88Team Echest Upgrade'
+      lore: ['#ffffffCurrent rows: {current}', '#ffffffMaximum rows: {max}', '#ff5d73Already at maximum rows.', '#a7b8b0No further upgrades available.', '#a7b8b0This upgrade is complete.']
+
+  confirm:
+    confirm:
+      material: LIME_DYE
+      name: ':lime_dye: #3ecf8eConfirm'
+      lore: ['#ffffffPermanently disband this team.']
+    cancel:
+      material: RED_DYE
+      name: ':red_dye: #ff5d73Cancel'
+      lore: ['#ffffffReturn without disbanding the team.']
+    transfer-confirm:
+      material: LIME_DYE
+      name: ':lime_dye: #3ecf8eConfirm'
+      lore: ['#ffffffTransfer ownership to #03fc88{player}#ffffff.']
+    transfer-target:
+      material: PLAYER_HEAD
+      name: ':player_head: #03fc88{player}'
+      lore: ['#ffffffCurrent role: #03fc88{role}', '#ffffffThis player will become the owner.']
+    transfer-cancel:
+      material: RED_DYE
+      name: ':red_dye: #ff5d73Cancel'
+      lore: ['#ffffffReturn without changing ownership.']

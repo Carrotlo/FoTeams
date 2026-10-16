@@ -1,0 +1,95 @@
+title: "ᴛᴇᴀᴍ ᴜᴘɢʀᴀᴅᴇs"
+rows: 3
+filler:
+  material: "GRAY_STAINED_GLASS_PANE"
+  name: " "
+  lore: []
+  enabled: true
+entries:
+  size:
+    slots:
+      - 11
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  echest:
+    slots:
+      - 15
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  back:
+    slots:
+      - 22
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+states:
+  size:
+    material: "PLAYER_HEAD"
+    name: ":player_head: #03fc88Team Size Upgrade"
+    lore:
+      - "#ffffffCurrent cap: {current}"
+      - "#ffffffNext cap: {next}"
+      - "#ffffffCost: {cost}"
+      - "#ffffffClick to purchase this upgrade."
+  size-maxed:
+    material: "BARRIER"
+    name: ":barrier: #03fc88Team Size Upgrade"
+    lore:
+      - "#ffffffCurrent cap: {current}"
+      - "#ff5d73Already at maximum cap."
+      - "#a7b8b0No further upgrades available."
+      - "#a7b8b0This upgrade is complete."
+  echest:
+    material: "ENDER_CHEST"
+    name: ":ender_chest: #03fc88Team Echest Upgrade"
+    lore:
+      - "#ffffffCurrent rows: {current}"
+      - "#ffffffMaximum rows: {max}"
+      - "#ffffffNext rows: {next}"
+      - "#ffffffCost: {cost}"
+      - "#ffffffClick to purchase this upgrade."
+  echest-maxed:
+    material: "BARRIER"
+    name: ":barrier: #03fc88Team Echest Upgrade"
+    lore:
+      - "#ffffffCurrent rows: {current}"
+      - "#ffffffMaximum rows: {max}"
+      - "#ff5d73Already at maximum rows."
+      - "#a7b8b0No further upgrades available."
+      - "#a7b8b0This upgrade is complete."
+  back:
+    material: "IRON_DOOR"
+    name: ":iron_door: #ffd966&lBACK"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eℹ Information ↓"
+      - "&7&l | &fReturn to the previous menu."
+      - " "
+      - "#3ecf8e→ Click to go back ←"

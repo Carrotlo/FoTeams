@@ -1,0 +1,57 @@
+title: "ᴄᴏɴꜰɪʀᴍ"
+rows: 3
+filler:
+  material: "GRAY_STAINED_GLASS_PANE"
+  name: " "
+  lore: []
+  enabled: true
+entries:
+  confirm:
+    slots:
+      - 11
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  target:
+    slots:
+      - 13
+    source-item: {}
+  cancel:
+    slots:
+      - 15
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+states:
+  confirm:
+    material: "LIME_DYE"
+    name: ":lime_dye: #3ecf8eConfirm"
+    lore:
+      - "#ffffffTransfer ownership to #03fc88{player}#ffffff."
+  target:
+    material: "PLAYER_HEAD"
+    name: ":player_head: #03fc88{player}"
+    lore:
+      - "#ffffffCurrent role: #03fc88{role}"
+      - "#ffffffThis player will become the owner."
+  cancel:
+    material: "RED_DYE"
+    name: ":red_dye: #ff5d73Cancel"
+    lore:
+      - "#ffffffReturn without changing ownership."

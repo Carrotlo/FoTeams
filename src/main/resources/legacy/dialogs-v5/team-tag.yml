@@ -1,0 +1,16 @@
+# Native dialog for team tag input.
+# Used only on compatible Paper/Paper-fork servers with native-dialogs.enabled: true.
+# Spigot and older servers use messages.yml chat prompts instead.
+# Expected input: 1 to configured max-team-tag-length characters, no spaces.
+title: "{theme}Team Tag"
+body:
+  - "{muted}Type a short team tag with no spaces."
+  - "{muted}Current value: {theme}{current}"
+field-label: "{white}Team tag"
+initial-value: "{current}"
+confirm-button: "{good}Save"
+cancel-button: "{bad}Cancel"
+body-width: 300
+input-width: 300
+button-width: 100
+max-length: 16

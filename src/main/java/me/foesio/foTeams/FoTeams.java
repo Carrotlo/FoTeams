@@ -10,9 +10,9 @@ import me.foesio.core.message.FoMessageService;
 import me.foesio.core.sound.FoAdminSounds;
 import me.foesio.core.sound.FoEditorSounds;
 import me.foesio.core.sound.FoGuiSounds;
-import me.foesio.core.sound.FoSoundMigrations;
 import me.foesio.core.sound.FoSoundService;
 import me.foesio.core.update.UpdateNoticeService;
+import me.foesio.core.text.PromptNormalizer;
 import me.foesio.foTeams.command.AdminCommand;
 import me.foesio.foTeams.command.TeamCommand;
 import me.foesio.foTeams.config.PluginConfigs;
@@ -22,11 +22,16 @@ import me.foesio.foTeams.hook.FoLevelsTeamXpHook;
 import me.foesio.foTeams.hook.FoTeamsPlaceholders;
 import me.foesio.foTeams.input.InputGuiService;
 import me.foesio.foTeams.input.InputGuiServices;
+import me.foesio.foTeams.input.CoreInputGuiService;
+import me.foesio.foTeams.input.BalanceDialogConfig;
+import me.foesio.foTeams.input.TeamDialogMigration;
+import me.foesio.foTeams.service.TeamSoundMigration;
 import me.foesio.foTeams.listener.ChatListener;
 import me.foesio.foTeams.listener.CombatListener;
 import me.foesio.foTeams.listener.GuiListener;
 import me.foesio.foTeams.listener.PlayerListener;
 import me.foesio.foTeams.service.PromptService;
+import me.foesio.foTeams.service.PublicChatPresentation;
 import me.foesio.foTeams.service.RolePermissionService;
 import me.foesio.foTeams.service.SwearFilterService;
 import me.foesio.foTeams.service.TeamChatService;
@@ -36,6 +41,7 @@ import me.foesio.foTeams.service.TeleportDelayService;
 import me.foesio.foTeams.storage.Database;
 import me.foesio.foTeams.storage.TeamRepository;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -44,8 +50,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 
 public final class FoTeams extends JavaPlugin {
@@ -89,17 +98,33 @@ public final class FoTeams extends JavaPlugin {
     private FoEditorSounds editorSounds;
     private FoGuiSounds guiSounds;
     private PublicGuiConfig publicGui;
+    private PublicChatPresentation publicChat;
+    private boolean freshDataFolder;
+    private int migrationStartVersion;
 
     @Override
     public void onEnable() {
+        freshDataFolder = isFreshDataFolder(getDataFolder().toPath());
         saveDefaultConfig();
         ensureConfigDefaults();
         try {
             bootstrap();
+            freshDataFolder = false;
             getLogger().info("FoTeams enabled.");
         } catch (Exception exception) {
             getLogger().log(Level.SEVERE, "Failed to enable FoTeams.", exception);
             getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    static boolean isFreshDataFolder(Path folder) {
+        if (!Files.exists(folder)) {
+            return true;
+        }
+        try (var paths = Files.walk(folder)) {
+            return paths.noneMatch(Files::isRegularFile);
+        } catch (IOException failure) {
+            return false;
         }
     }
 
@@ -109,15 +134,28 @@ public final class FoTeams extends JavaPlugin {
         ensureAuxiliaryConfigDefaults();
         swearFilterService = new SwearFilterService(pluginConfigs.swearWords());
         core = FoPluginCore.create(this);
+        migrationStartVersion = core.migrations().version();
         core.warnIfNativeDialogsUnavailable();
-        sounds = core.createSounds(soundMigrations());
-        adminSounds = FoAdminSounds.create(sounds);
-        editorSounds = FoEditorSounds.create(sounds);
-        guiSounds = FoGuiSounds.create(sounds);
-        messages = FoMessageService.load(this, messageMigrations());
+        if (!new java.io.File(getDataFolder(), "messages.yml").exists()) {
+            saveResource("messages.yml", false);
+        }
+        messages = FoMessageService.loadPreservingRemovals(this, messageMigrations());
         migrateSprites();
         publicGui = new PublicGuiConfig(this);
         publicGui.initialize(core.migrations());
+        publicChat = new PublicChatPresentation();
+        publicChat.initialize(getConfig(), bundledConfig(), getLogger()::warning);
+        if (!TeamDialogMigration.install(this, core.migrations())) {
+            getLogger().warning("Public dialog migration is pending; installed dialogs will use safe available paths.");
+        }
+        migratePublicMessageKeys();
+        if (!TeamSoundMigration.install(this, core.migrations())) {
+            getLogger().warning("Public sound migration is pending; installed sounds will use safe available paths.");
+        }
+        sounds = FoSoundService.loadPreservingRemovals(this);
+        adminSounds = FoAdminSounds.create(sounds);
+        editorSounds = FoEditorSounds.create(sounds);
+        guiSounds = FoGuiSounds.create(sounds);
         startMetrics();
         updates = core.createUpdateNotices(messages, "foteams", adminSounds).start();
         rolePermissions = new RolePermissionService(pluginConfigs.permissions());
@@ -244,6 +282,101 @@ public final class FoTeams extends JavaPlugin {
         messages.reload();
     }
 
+    private void migratePublicMessageKeys() {
+        int originalVersion = core.migrations().version();
+        if (originalVersion < 7 || originalVersion >= 9) {
+            return;
+        }
+        List<String> keys = List.of("pvp-protection-locked", "score-top-header", "score-top-entry",
+                "bank-balance", "balance-top-header", "balance-top-entry");
+        List<String> promptKeys = List.of("prompt-name", "prompt-tag", "prompt-description",
+                "prompt-tag-color", "prompt-warp-create", "prompt-warp-create-password",
+                "prompt-team-target", "prompt-player-target", "prompt-score", "prompt-money",
+                "prompt-bank-action", "prompt-team-search");
+        YamlConfiguration defaults;
+        YamlConfiguration oldV8;
+        YamlConfiguration oldV3;
+        try {
+            defaults = bundledMessages("messages.yml");
+            oldV8 = bundledMessages("legacy/messages-v8.yml");
+            oldV3 = bundledMessages("legacy/messages-v3.yml");
+        } catch (Exception failure) {
+            getLogger().warning("Public message migration remains pending: " + failure.getMessage());
+            return;
+        }
+        Path file = getDataFolder().toPath().resolve("messages.yml");
+        byte[] original;
+        try {
+            original = Files.readAllBytes(file);
+            boolean changing = keys.stream().anyMatch(key -> !messages.config().contains(key, false))
+                    || promptKeys.stream().anyMatch(key -> matchesKnownMessageDefault(messages.config(), key, oldV8, oldV3)
+                            && !java.util.Objects.equals(messages.config().get(key), defaults.get(key)));
+            if (changing) {
+                Path backup = file.resolveSibling("messages.yml.gui-v" + migrationStartVersion + "-backup");
+                if (Files.exists(backup)) {
+                    if (!java.util.Arrays.equals(original, Files.readAllBytes(backup))) {
+                        throw new IOException("Existing original-version message backup differs");
+                    }
+                } else {
+                    Files.write(backup, original);
+                }
+            }
+        } catch (IOException failure) {
+            getLogger().warning("Public message migration remains pending: " + failure.getMessage());
+            return;
+        }
+        if (!messages.migrateToVersion(core.migrations(), 9, owner -> {
+            boolean changed = false;
+            for (String key : keys) {
+                if (!owner.contains(key, false)) {
+                    owner.set(key, defaults.get(key));
+                    changed = true;
+                }
+            }
+            for (String key : promptKeys) {
+                if (matchesKnownMessageDefault(owner, key, oldV8, oldV3)
+                        && !java.util.Objects.equals(owner.get(key), defaults.get(key))) {
+                    owner.set(key, defaults.get(key));
+                    changed = true;
+                }
+            }
+            return changed;
+        })) {
+            try {
+                Files.write(file, original);
+                messages.reload();
+            } catch (IOException rollbackFailure) {
+                getLogger().severe("Could not roll back public messages: " + rollbackFailure.getMessage());
+            }
+            getLogger().warning("Public message migration remains pending; older messages remain available.");
+        }
+    }
+
+    private boolean matchesKnownMessageDefault(org.bukkit.configuration.file.FileConfiguration owner,
+                                               String key, YamlConfiguration oldV8, YamlConfiguration oldV3) {
+        return owner.contains(key, false) && (java.util.Objects.equals(owner.get(key), oldV8.get(key))
+                || java.util.Objects.equals(owner.get(key), oldV3.get(key)));
+    }
+
+    private YamlConfiguration bundledMessages(String path) throws Exception {
+        try (InputStream stream = getResource(path)) {
+            if (stream == null) {
+                throw new IOException("Bundled " + path + " is missing");
+            }
+            YamlConfiguration yaml = new YamlConfiguration();
+            yaml.load(new InputStreamReader(stream, StandardCharsets.UTF_8));
+            return yaml;
+        }
+    }
+
+    private YamlConfiguration bundledConfig() {
+        try {
+            return bundledMessages("config.yml");
+        } catch (Exception failure) {
+            throw new IllegalStateException("Bundled config.yml is unavailable", failure);
+        }
+    }
+
     private void registerCommands() {
         PluginCommand team = getCommand("foteams");
         PluginCommand admin = getCommand("foteamsadmin");
@@ -258,7 +391,7 @@ public final class FoTeams extends JavaPlugin {
     }
 
     private void registerListeners() {
-        getServer().getPluginManager().registerEvents(new GuiListener(this), this);
+        // CorePublicMenus owns the sole GuiListener registration for public and shared inventories.
         getServer().getPluginManager().registerEvents(chatListener, this);
         getServer().getPluginManager().registerEvents(combatListener, this);
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
@@ -281,8 +414,28 @@ public final class FoTeams extends JavaPlugin {
     }
 
     public void reloadPlugin() throws Exception {
+        if (publicChat != null && !publicChat.validateInstalled(
+                getDataFolder().toPath().resolve("config.yml").toFile(), getLogger()::warning)) {
+            throw new IllegalStateException("Installed public chat text is invalid; current text remains active.");
+        }
+        if (guiService != null && !guiService.validatePublicMenus()) {
+            throw new IllegalStateException("Installed public GUI files are invalid; current menus remain active.");
+        }
+        if (publicGui != null && !publicGui.validateInstalled()) {
+            throw new IllegalStateException("Installed public text is invalid; current text remains active.");
+        }
+        if (!CoreInputGuiService.validateInstalled(this)) {
+            throw new IllegalStateException("Installed public dialogs are invalid; current dialogs remain active.");
+        }
+        if (!BalanceDialogConfig.validateInstalled(this)) {
+            throw new IllegalStateException("Installed balance dialog is invalid; current dialog remains active.");
+        }
+        if (sounds != null && new java.io.File(getDataFolder(), "sounds.yml").isFile()
+                && !sounds.validateInstalled()) {
+            throw new IllegalStateException("Installed sounds are invalid; current sounds remain active.");
+        }
         if (guiService != null) {
-            guiService.saveOpenSharedChests();
+            guiService.closeOpenSharedChestsForReload();
         }
         if (teleportDelayService != null) {
             teleportDelayService.cancelAll();
@@ -290,6 +443,7 @@ public final class FoTeams extends JavaPlugin {
         teamService.saveAll();
         reloadConfig();
         ensureConfigDefaults();
+        publicChat.reload(getConfig());
         pluginConfigs.reloadAll();
         ensureAuxiliaryConfigDefaults();
         swearFilterService = new SwearFilterService(pluginConfigs.swearWords());
@@ -303,7 +457,10 @@ public final class FoTeams extends JavaPlugin {
         core.warnIfNativeDialogsUnavailable();
         sounds.reload();
         messages.reload();
-        publicGui.reload();
+        if (!publicGui.reload()) {
+            throw new IllegalStateException("Public text reload failed; previous values remain active.");
+        }
+        guiService.reloadPublicMenus();
         startMetrics();
         inputGuiService = InputGuiServices.create(this, core);
         teleportDelayService = new TeleportDelayService(this);
@@ -316,6 +473,42 @@ public final class FoTeams extends JavaPlugin {
 
     public PublicGuiConfig publicGui() {
         return publicGui;
+    }
+
+    public PublicChatPresentation publicChat() {
+        return publicChat;
+    }
+
+    public void sendMessage(CommandSender sender, String path) {
+        sendMessage(sender, path, Map.of());
+    }
+
+    public void sendMessage(CommandSender sender, String path, Map<String, String> replacements) {
+        if (messages.config().isString(path) && !messages.config().getString(path, "").isEmpty()) {
+            messages.send(sender, path, "", replacements);
+        } else if (messages.config().isList(path) && !messages.config().getStringList(path).isEmpty()) {
+            messages.sendList(sender, path, List.of(), replacements);
+        }
+    }
+
+    public void sendMessageList(CommandSender sender, String path) {
+        if (messages.config().isList(path) && !messages.config().getStringList(path).isEmpty()) {
+            messages.sendList(sender, path, List.of(), Map.of());
+        }
+    }
+
+    public boolean isCancelInput(String input) {
+        String configured = publicGui == null ? "cancel" : publicGui.label("chat.cancel-keyword", "cancel");
+        return PromptNormalizer.isCancel(input)
+                || (!configured.isBlank() && PromptNormalizer.normalize(input).equalsIgnoreCase(configured));
+    }
+
+    public boolean freshDataFolder() {
+        return freshDataFolder;
+    }
+
+    public int migrationStartVersion() {
+        return migrationStartVersion;
     }
 
     private TeamService createTeamService() throws SQLException {
@@ -389,6 +582,13 @@ public final class FoTeams extends JavaPlugin {
             boolean changed = false;
             for (String path : defaults.getKeys(true)) {
                 if (path == null || path.isEmpty() || defaults.isConfigurationSection(path)) {
+                    continue;
+                }
+                // The versioned public GUI migration must see owner omissions in
+                // the released config.yml, not a value just backfilled here.
+                if (path.startsWith("gui.") || path.equals("chat.team-format")
+                        || path.equals("chat.ally-format") || path.equals("chat.spy-format")
+                        || path.equals("placeholders.no-team") || path.equals("placeholders.no-rank")) {
                     continue;
                 }
                 if (!getConfig().isSet(path)) {
@@ -469,6 +669,7 @@ public final class FoTeams extends JavaPlugin {
         stopTeamLevelAutosaveTask();
         if (guiService != null) {
             guiService.saveOpenSharedChests();
+            guiService.closePublicMenus();
         }
         if (teleportDelayService != null) {
             teleportDelayService.cancelAll();
@@ -605,13 +806,4 @@ public final class FoTeams extends JavaPlugin {
         return guiSounds;
     }
 
-    private FoSoundMigrations soundMigrations() {
-        return FoSoundMigrations.create()
-                .moveFromConfig("sounds.gui-open", "gui.open")
-                .move("team.gui-open", "gui.open")
-                .moveFromConfig("sounds.success", "team.success")
-                .moveFromConfig("sounds.failure", "team.failure")
-                .moveFromConfig("sounds.teleport", "team.teleport")
-                .build();
-    }
 }

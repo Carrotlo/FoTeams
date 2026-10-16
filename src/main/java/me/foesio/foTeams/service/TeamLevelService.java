@@ -65,7 +65,7 @@ public final class TeamLevelService {
             return false;
         }
         if (plugin.getConfig().getBoolean("team-level.show-xp-gain", false)) {
-            plugin.getMessages().send(player, "team-level-xp-gained", replacements(team, player, result.newLevel(), result.gainedXp(), result.currentXp(), result.requiredXp()));
+            plugin.sendMessage(player, "team-level-xp-gained", replacements(team, player, result.newLevel(), result.gainedXp(), result.currentXp(), result.requiredXp()));
         }
         for (int level : result.gainedLevels()) {
             Map<String, String> replacements = replacements(team, player, level, result.gainedXp(), team.getTeamXp(), requiredXp(team), reason, sourceKey);
@@ -77,10 +77,10 @@ public final class TeamLevelService {
 
     public void sendDisabledMessage(CommandSender sender) {
         if (!isConfiguredEnabled()) {
-            plugin.getMessages().send(sender, "team-level-disabled");
+            plugin.sendMessage(sender, "team-level-disabled");
             return;
         }
-        plugin.getMessages().send(sender, "team-level-unavailable");
+        plugin.sendMessage(sender, "team-level-unavailable");
     }
 
     private void applyRewards(Team team, Player source, int level, Map<String, String> baseReplacements) {
@@ -117,7 +117,7 @@ public final class TeamLevelService {
         for (UUID memberId : plugin.getTeamService().allMembers(team)) {
             Player member = Bukkit.getPlayer(memberId);
             if (member != null) {
-                plugin.getMessages().send(member, messageKey, replacements);
+                plugin.sendMessage(member, messageKey, replacements);
             }
         }
     }
@@ -171,7 +171,7 @@ public final class TeamLevelService {
 
     private String ownerName(Team team) {
         if (!team.hasOwner()) {
-            return "None";
+            return plugin.publicGui().label("player.no-owner", "");
         }
         OfflinePlayer owner = Bukkit.getOfflinePlayer(team.getOwnerId());
         return owner.getName() == null ? team.getOwnerId().toString() : owner.getName();

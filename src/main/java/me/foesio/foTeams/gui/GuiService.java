@@ -1,18 +1,17 @@
 package me.foesio.foTeams.gui;
 
 import me.foesio.core.dialog.DialogIcons;
-import me.foesio.core.gui.GuiButtonConfig;
 import me.foesio.core.gui.GuiTitles;
 import me.foesio.core.item.FoItemStacks;
 import me.foesio.core.number.LargeNumberParser;
 import me.foesio.core.text.FoText;
-import me.foesio.core.text.PromptNormalizer;
 import me.foesio.core.editor.EditorItemFactory;
 import me.foesio.core.message.FoStyle;
 import me.foesio.core.gui.EntryBrowserClick;
 import me.foesio.core.gui.EntryBrowserHolder;
 import me.foesio.core.gui.EntryBrowserMenus;
 import me.foesio.core.gui.EntryBrowserRequest;
+import me.foesio.core.gui.publicgui.PublicGuiInventoryHolder;
 import me.foesio.foTeams.FoTeams;
 import me.foesio.foTeams.input.BalanceDialogAction;
 import me.foesio.foTeams.input.BalanceDialogRequest;
@@ -36,6 +35,8 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.NamespacedKey;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -57,21 +58,48 @@ public final class GuiService {
     private static final int[] EDITOR_HOME_SLOTS = {11, 12, 13, 14, 15, 16};
 
     private final FoTeams plugin;
-    private final GuiButtonConfig buttons = GuiButtonConfig.defaults();
     private final Map<Integer, SharedChestHolder> sharedChests = new HashMap<>();
     private final Set<SharedChestHolder> pendingSharedChestSaves = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<UUID, ScreenState> activeScreens = new ConcurrentHashMap<>();
     private final Set<UUID> pendingBackNavigations = ConcurrentHashMap.newKeySet();
     private final List<ConfigCategory> configCategories;
+    private final NamespacedKey publicMarkerKey;
+    private final Map<UUID, PublicItemMarker> publicMarkers = new HashMap<>();
+    private final CorePublicMenus corePublicMenus;
 
     public GuiService(FoTeams plugin) {
         this.plugin = plugin;
         this.configCategories = createConfigCategories();
+        this.publicMarkerKey = new NamespacedKey(plugin, "public_gui_marker");
+        this.corePublicMenus = new CorePublicMenus(plugin, this);
+    }
+
+    public void reloadPublicMenus() {
+        if (!corePublicMenus.reload().successful()) {
+            throw new IllegalStateException("One or more public GUI reloads failed; affected screens retain their previous snapshot.");
+        }
+    }
+
+    public boolean validatePublicMenus() {
+        return corePublicMenus.validateInstalled();
+    }
+
+    public void closePublicMenus() {
+        corePublicMenus.close();
+    }
+
+    private boolean publicMenuReady(Player player, String menu) {
+        if (corePublicMenus.available(menu) && plugin.publicGui().available()) {
+            return true;
+        }
+        plugin.sendMessage(player, "public-gui-unavailable");
+        return false;
     }
 
     public boolean suppressNextInventoryClose(Player player) {
         Inventory topInventory = player.getOpenInventory().getTopInventory();
-        if (!(topInventory.getHolder() instanceof FoGui || topInventory.getHolder() instanceof SharedChestHolder)) {
+        if (!(topInventory.getHolder() instanceof FoGui || topInventory.getHolder() instanceof SharedChestHolder
+                || topInventory.getHolder() instanceof PublicGuiInventoryHolder)) {
             return false;
         }
         plugin.getCore().inventoryCloseSuppressor().suppressNextClose(player);
@@ -94,17 +122,24 @@ public final class GuiService {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Inventory inventory = player.getOpenInventory().getTopInventory();
             Object holder = inventory.getHolder();
-            if (!(holder instanceof FoGui) && !(holder instanceof EntryBrowserHolder) && !(holder instanceof SharedChestHolder)) {
+            if (!(holder instanceof FoGui) && !(holder instanceof EntryBrowserHolder)
+                    && !(holder instanceof SharedChestHolder) && !(holder instanceof PublicGuiInventoryHolder)) {
                 activeScreens.remove(player.getUniqueId());
                 pendingBackNavigations.remove(player.getUniqueId());
+                corePublicMenus.forget(player.getUniqueId());
             }
         });
     }
 
     public void openDashboard(Player player) {
+        if (!publicMenuReady(player, plugin.getTeamService().teamOf(player.getUniqueId()).isEmpty()
+                ? "dashboard-empty" : "dashboard-team")) {
+            return;
+        }
         Optional<Team> optionalTeam = plugin.getTeamService().teamOf(player.getUniqueId());
-        FoGui gui = publicGui(optionalTeam.isEmpty() ? 27 : 45, player, "dashboard", "ᴛᴇᴀᴍs");
-        fill(gui);
+        FoGui gui = publicGui(optionalTeam.isEmpty() ? 27 : 45, player, "dashboard", "ᴛᴇᴀᴍs",
+                optionalTeam.orElse(null));
+        fill(gui, player);
         if (optionalTeam.isEmpty()) {
             gui.getInventory().setItem(11, publicItem(player, "dashboard", "create", Material.EMERALD,
                     "#03fc88Create Team", List.of("#ffffffCreate your own team.", "#a7b8b0Click to type a team name.")));
@@ -114,24 +149,33 @@ public final class GuiService {
                         return;
                     }
                     if (plugin.getTeamService().isNameTaken(input)) {
-                        plugin.getMessages().send(player, "team-name-taken");
+                        plugin.sendMessage(player, "team-name-taken");
                         return;
                     }
                     Team created = plugin.getTeamService().createTeam(player, input);
                     sound(player, "created");
-                    plugin.getMessages().send(player, "team-created", Map.of("{team}", created.getName()));
+                    plugin.sendMessage(player, "team-created", Map.of("{team}", created.getName()));
                     openDashboard(player);
                 } catch (Exception exception) {
                     plugin.getLogger().log(Level.WARNING, "Failed to create team from dashboard for " + player.getName() + ".", exception);
-                    plugin.getMessages().send(player, "team-create-failed");
+                    plugin.sendMessage(player, "team-create-failed");
                 }
             }));
             List<TeamInvite> invites = plugin.getTeamService().invites(player.getUniqueId());
-            gui.getInventory().setItem(15, publicItem(player, "dashboard", "invites", Material.WRITABLE_BOOK, "#03fc88Invites", invites.isEmpty()
+            List<String> inviteLines = invites.isEmpty()
                     ? List.of("#ffffffNo pending team invites.")
-                    : invites.stream().limit(5).map(invite -> "#ffffff" + plugin.getTeamService().byId(invite.teamId()).map(Team::getName).orElse("Unknown")).toList(),
-                    Map.of("invite_status", invites.isEmpty() ? "#ffffffNo pending team invites."
-                            : "#ffffffPending invites: #03fc88" + invites.size())));
+                    : invites.stream().limit(5)
+                            .map(invite -> plugin.publicGui().label("invites.entry", "",
+                                    Map.of("team", plugin.getTeamService().byId(invite.teamId()).map(Team::getName)
+                                            .orElse(plugin.publicGui().label("unknown-team", "")))))
+                            .toList();
+            List<String> inviteFallback = new ArrayList<>(inviteLines);
+            if (!invites.isEmpty()) {
+                inviteFallback.add("#a7b8b0Click to join the oldest invite.");
+            }
+            gui.getInventory().setItem(15, publicItem(player, "dashboard", invites.isEmpty() ? "invites-empty" : "invites", Material.WRITABLE_BOOK,
+                    "#03fc88Invites", inviteFallback, Map.of("invite_count", String.valueOf(invites.size())),
+                    Map.of("invites", inviteLines)));
             gui.setAction(15, event -> {
                 if (!invites.isEmpty()) {
                     Team team = plugin.getTeamService().byId(invites.getFirst().teamId()).orElse(null);
@@ -142,10 +186,10 @@ public final class GuiService {
                             broadcastTeamMessage(team, "member-joined", Map.of("{player}", player.getName(), "{team}", team.getName()));
                             openDashboard(player);
                         } catch (IllegalStateException exception) {
-                            plugin.getMessages().send(player, "team-full");
+                            plugin.sendMessage(player, "team-full");
                         } catch (SQLException exception) {
                             plugin.getLogger().log(Level.WARNING, "Failed to join invited team " + team.getId() + " for " + player.getName() + ".", exception);
-                            plugin.getMessages().send(player, "action-failed");
+                            plugin.sendMessage(player, "action-failed");
                         }
                     }
                 }
@@ -156,26 +200,38 @@ public final class GuiService {
                     "#ffffffName: " + accent(team.getName()),
                     "#ffffffTag: " + tag(team),
                     "#ffffffDescription: #ffffff" + team.getDescription()),
-                    Map.of("team", team.getName(), "tag", team.getTag(), "description", team.getDescription())));
+                    Map.of("team", team.getName(), "tag", tag(team), "description", team.getDescription())));
             gui.setAction(10, event -> openInfo(player, team));
             gui.getInventory().setItem(12, publicItem(player, "dashboard", "settings", Material.COMPARATOR, accent("Settings"), List.of("#ffffffManage your team.")));
             gui.setAction(12, event -> openSettings(player, team, false));
             gui.getInventory().setItem(14, publicItem(player, "dashboard", "members", Material.PLAYER_HEAD, accent("Members"), List.of(
                     "#ffffffOwner: " + playerName(team.getOwnerId()),
                     "#ffffffAdmins: " + team.getAdmins().size(),
-                    "#ffffffMembers: " + team.getMembers().size())));
+                    "#ffffffMembers: " + team.getMembers().size()), Map.of(
+                    "owner", playerName(team.getOwnerId()),
+                    "admins", String.valueOf(team.getAdmins().size()),
+                    "members", String.valueOf(team.getMembers().size()))));
             gui.setAction(14, event -> openMembers(player, team, false));
             gui.getInventory().setItem(16, publicItem(player, "dashboard", "warps", Material.ENDER_PEARL, accent("Warps"), List.of(
                     "#ffffffHome and warp travel.",
-                    "#ffffffWarps: " + team.getWarps().size() + "/" + plugin.getTeamService().maxWarps())));
+                    "#ffffffWarps: " + team.getWarps().size() + "/" + plugin.getTeamService().maxWarps()), Map.of(
+                    "warps", String.valueOf(team.getWarps().size()),
+                    "max_warps", String.valueOf(plugin.getTeamService().maxWarps()))));
             gui.setAction(16, event -> openWarps(player, team, false));
             gui.getInventory().setItem(28, publicItem(player, "dashboard", "score-top", Material.EMERALD, accent("Score Top"), List.of(
                     "#ffffffScore: " + team.getScore(),
-                    "#ffffffRank: " + plugin.getTeamService().scoreRank(team))));
+                    "#ffffffRank: " + plugin.getTeamService().scoreRank(team)), Map.of(
+                    "score", String.valueOf(team.getScore()),
+                    "rank", String.valueOf(plugin.getTeamService().scoreRank(team)))));
             gui.setAction(28, event -> player.performCommand("team top"));
-            gui.getInventory().setItem(30, publicItem(player, "dashboard", "balance", Material.GOLD_INGOT, accent("Balance"), List.of(
+            gui.getInventory().setItem(30, publicItem(player, "dashboard", plugin.getEconomyService().isAvailable()
+                    ? "balance" : "balance-unavailable", Material.GOLD_INGOT, accent("Balance"), List.of(
                     "#ffffffBank: " + Text.money(team.getBalance()),
-                    plugin.getEconomyService().isAvailable() ? "#ffffffClick to deposit or withdraw." : "#ff5d73Vault not installed.")));
+                    plugin.getEconomyService().isAvailable() ? "#ffffffClick to deposit or withdraw." : "#ff5d73Vault not installed."), Map.of(
+                    "balance", Text.money(team.getBalance()),
+                    "balance_action", plugin.getEconomyService().isAvailable()
+                            ? plugin.publicGui().label("balance-action.available", "")
+                            : plugin.publicGui().label("balance-action.unavailable", ""))));
             gui.setAction(30, event -> openBalanceDialog(player, team));
             gui.getInventory().setItem(32, publicItem(player, "dashboard", "shared-chest", Material.ENDER_CHEST, accent("Shared Chest"), List.of("#ffffffOpen your team ender chest.")));
             gui.setAction(32, event -> openSharedChest(player, team, false));
@@ -188,14 +244,14 @@ public final class GuiService {
 
     private void openBalanceDialog(Player player, Team team) {
         if (!plugin.getEconomyService().isAvailable()) {
-            plugin.getMessages().send(player, "economy-disabled");
+            plugin.sendMessage(player, "economy-disabled");
             return;
         }
 
         boolean canDeposit = plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.DEPOSIT);
         boolean canWithdraw = plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.WITHDRAW);
         if (!canDeposit && !canWithdraw) {
-            plugin.getMessages().send(player, "no-permission-role");
+            plugin.sendMessage(player, "no-permission-role");
             return;
         }
 
@@ -232,36 +288,37 @@ public final class GuiService {
 
     private void openBalanceChatFallback(Player player, Team team, boolean canDeposit, boolean canWithdraw) {
         player.closeInventory();
-        plugin.getPromptService().setPrompt(player, plugin.getMessages().render("prompt-bank-action", "prompt-bank-action", Map.of(
-                "{actions}", bankActionsText(canDeposit, canWithdraw)
+        plugin.getPromptService().setPrompt(player, plugin.getMessages().renderComponent(player, "prompt-bank-action", "", Map.of(
+                "{actions}", bankActionsText(canDeposit, canWithdraw),
+                "{cancel}", plugin.publicGui().label("chat.cancel-keyword", "")
         )), input -> {
-            if (PromptNormalizer.isCancel(input)) {
-                plugin.getMessages().send(player, "prompt-cancelled");
+            if (plugin.isCancelInput(input)) {
+                plugin.sendMessage(player, "prompt-cancelled");
                 return;
             }
             String[] parts = input.trim().split("\\s+", 2);
             if (parts.length < 2) {
-                plugin.getMessages().send(player, "bank-action-invalid", Map.of("{actions}", bankActionsText(canDeposit, canWithdraw)));
+                plugin.sendMessage(player, "bank-action-invalid", Map.of("{actions}", bankActionsText(canDeposit, canWithdraw)));
                 return;
             }
             String action = parts[0].toLowerCase(Locale.ROOT);
-            if ("deposit".equals(action)) {
+            if (plugin.publicGui().label("bank-actions.deposit-keyword", "").equalsIgnoreCase(action)) {
                 if (!canDeposit) {
-                    plugin.getMessages().send(player, "no-permission-role");
+                    plugin.sendMessage(player, "no-permission-role");
                     return;
                 }
                 handleBalanceAction(player, team, BalanceDialogAction.deposit(parts[1]));
                 return;
             }
-            if ("withdraw".equals(action)) {
+            if (plugin.publicGui().label("bank-actions.withdraw-keyword", "").equalsIgnoreCase(action)) {
                 if (!canWithdraw) {
-                    plugin.getMessages().send(player, "no-permission-role");
+                    plugin.sendMessage(player, "no-permission-role");
                     return;
                 }
                 handleBalanceAction(player, team, BalanceDialogAction.withdraw(parts[1]));
                 return;
             }
-            plugin.getMessages().send(player, "bank-action-invalid", Map.of("{actions}", bankActionsText(canDeposit, canWithdraw)));
+            plugin.sendMessage(player, "bank-action-invalid", Map.of("{actions}", bankActionsText(canDeposit, canWithdraw)));
         });
     }
 
@@ -275,7 +332,7 @@ public final class GuiService {
         }
         Team currentTeam = currentTeam(player, team);
         if (currentTeam == null) {
-            plugin.getMessages().send(player, "not-in-team");
+            plugin.sendMessage(player, "not-in-team");
             return;
         }
         Double amount = parseBalanceAmount(player, action.amount());
@@ -290,7 +347,7 @@ public final class GuiService {
             }
         } catch (SQLException exception) {
             plugin.getLogger().log(Level.WARNING, "Failed to apply team bank action for team " + currentTeam.getId() + ".", exception);
-            plugin.getMessages().send(player, "action-failed");
+            plugin.sendMessage(player, "action-failed");
         }
     }
 
@@ -302,20 +359,24 @@ public final class GuiService {
     private Double parseBalanceAmount(Player player, String input) {
         var parsed = LargeNumberParser.parseDouble(input);
         if (parsed.isEmpty()) {
-            plugin.getMessages().send(player, "money-invalid");
+            plugin.sendMessage(player, "money-invalid");
             return null;
         }
         return parsed.getAsDouble();
     }
 
     private String bankActionsText(boolean canDeposit, boolean canWithdraw) {
+        Map<String, String> words = Map.of(
+                "deposit", plugin.publicGui().label("bank-actions.deposit-keyword", ""),
+                "withdraw", plugin.publicGui().label("bank-actions.withdraw-keyword", ""),
+                "amount", plugin.publicGui().label("bank-actions.amount-example", ""));
         if (canDeposit && canWithdraw) {
-            return "{white}deposit <amount>{muted} or {white}withdraw <amount>";
+            return plugin.publicGui().label("bank-actions.both", "", words);
         }
         if (canDeposit) {
-            return "{white}deposit <amount>";
+            return plugin.publicGui().label("bank-actions.deposit", "", words);
         }
-        return "{white}withdraw <amount>";
+        return plugin.publicGui().label("bank-actions.withdraw", "", words);
     }
 
     public void openSettings(Player player, Team team, boolean adminView) {
@@ -323,46 +384,49 @@ public final class GuiService {
     }
 
     private void openSettings(Player player, Team team, boolean adminView, AdminEditorContext adminContext) {
+        if (!adminView && !publicMenuReady(player, "settings")) {
+            return;
+        }
         FoGui gui = adminView
                 ? gui(36, plugin.getConfig().getString("gui.titles.settings", "Settings"))
-                : publicGui(36, player, "settings", "ᴛᴇᴀᴍ sᴇᴛᴛɪɴɢs");
-        fill(gui);
+                : publicGui(36, player, "settings", "ᴛᴇᴀᴍ sᴇᴛᴛɪɴɢs", team);
+        fill(gui, player);
         gui.getInventory().setItem(10, screenItem(player, adminView, "settings", "name", Material.NAME_TAG,
                 accent("Name"), List.of("#ffffffCurrent: " + accent(team.getName()), "#ffffffClick to rename."),
                 Map.of("team", team.getName())));
         gui.setAction(10, event -> promptText(player, "prompt-name", team.getName(), input -> {
             if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.CHANGE_NAME)) {
-                plugin.getMessages().send(player, "no-permission-role");
+                plugin.sendMessage(player, "no-permission-role");
                 return;
             }
             if (!validateTeamName(player, input)) {
                 return;
             }
             if (plugin.getTeamService().isNameTaken(input)) {
-                plugin.getMessages().send(player, "team-name-taken");
+                plugin.sendMessage(player, "team-name-taken");
                 return;
             }
             try {
                 plugin.getTeamService().updateName(team, input);
-                plugin.getMessages().send(player, "name-updated", Map.of("{team}", input));
+                plugin.sendMessage(player, "name-updated", Map.of("{team}", input));
                 openSettings(player, team, adminView, adminContext);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to update team name for team " + team.getId() + ".", exception);
-                plugin.getMessages().send(player, "settings-save-failed");
+                plugin.sendMessage(player, "settings-save-failed");
             }
         }));
         gui.getInventory().setItem(11, screenItem(player, adminView, "settings", "tag", Material.OAK_SIGN,
                 accent("Tag"), List.of("#ffffffCurrent: " + tag(team), "#ffffffClick to edit the tag."), Map.of("tag", team.getTag())));
         gui.setAction(11, event -> promptText(player, "prompt-tag", team.getTag(), input -> mutate(player, team, adminView, TeamAction.CHANGE_TAG, () -> {
             if (!plugin.getTeamService().isValidTag(input)) {
-                plugin.getMessages().send(player, "tag-invalid", Map.of("{max}", String.valueOf(plugin.getTeamService().maxTagLength())));
+                plugin.sendMessage(player, "tag-invalid", Map.of("{max}", String.valueOf(plugin.getTeamService().maxTagLength())));
                 return;
             }
             if (!validateAllowedTeamText(player, input)) {
                 return;
             }
             plugin.getTeamService().updateTag(team, input.toUpperCase(Locale.ROOT));
-            plugin.getMessages().send(player, "tag-updated", Map.of("{tag}", input.toUpperCase(Locale.ROOT)));
+            plugin.sendMessage(player, "tag-updated", Map.of("{tag}", input.toUpperCase(Locale.ROOT)));
             openSettings(player, team, adminView, adminContext);
         })));
         gui.getInventory().setItem(12, screenItem(player, adminView, "settings", "description", Material.BOOK,
@@ -372,17 +436,17 @@ public final class GuiService {
                 return;
             }
             plugin.getTeamService().updateDescription(team, input);
-            plugin.getMessages().send(player, "description-updated");
+            plugin.sendMessage(player, "description-updated");
             openSettings(player, team, adminView, adminContext);
         })));
         gui.getInventory().setItem(13, screenItem(player, adminView, "settings", "tag-color", Material.LEATHER_CHESTPLATE,
                 accent("Tag Color"), List.of("#ffffffCurrent: " + team.getColor(), "#ffffffClick to change the tag color."), Map.of("color", team.getColor())));
         gui.setAction(13, event -> promptText(player, "prompt-tag-color", team.getColor(), input -> mutate(player, team, adminView, TeamAction.CHANGE_COLOR, () -> {
             if (!plugin.getTeamService().updateTagColor(team, input)) {
-                plugin.getMessages().send(player, "tag-color-invalid");
+                plugin.sendMessage(player, "tag-color-invalid");
                 return;
             }
-            plugin.getMessages().send(player, "tag-color-updated", Map.of("{color}", team.getColor()));
+            plugin.sendMessage(player, "tag-color-updated", Map.of("{color}", team.getColor()));
             openSettings(player, team, adminView, adminContext);
         })));
         gui.getInventory().setItem(15, screenItem(player, adminView, "settings", "relations", Material.LEAD,
@@ -393,9 +457,11 @@ public final class GuiService {
         gui.setAction(21, event -> openTransferOwnership(player, team, adminView, 0, adminContext));
         boolean pvpForceLock = plugin.getConfig().getBoolean("team-pvp-force-disable-all", false);
         boolean pvpProtected = !pvpForceLock && team.isTeamPvpProtectionEnabled();
-        gui.getInventory().setItem(16, screenItem(player, adminView, "settings", pvpProtected ? "pvp-enabled" : "pvp-disabled",
-                pvpProtected ? Material.LIME_DYE : Material.GRAY_DYE,
-                pvpProtected ? "#3ecf8eTeam PvP Protection Enabled" : "#ff5d73Team PvP Protection Disabled",
+        String pvpKey = pvpForceLock ? "pvp-forced" : pvpProtected ? "pvp-enabled" : "pvp-disabled";
+        gui.getInventory().setItem(16, screenItem(player, adminView, "settings", pvpKey,
+                pvpForceLock ? Material.BARRIER : pvpProtected ? Material.LIME_DYE : Material.GRAY_DYE,
+                pvpForceLock ? "#ff5d73Team PvP Protection Forced Off"
+                        : pvpProtected ? "#3ecf8eTeam PvP Protection Enabled" : "#ff5d73Team PvP Protection Disabled",
                 List.of(
                         "#ffffffEnabled: teammates cannot damage each other.",
                         "#ffffffDisabled: teammates can damage each other.",
@@ -403,7 +469,7 @@ public final class GuiService {
                 )));
         gui.setAction(16, event -> {
             if (!adminView && !canManageTeamPvp(team, player.getUniqueId())) {
-                plugin.getMessages().send(player, "no-permission-role");
+                plugin.sendMessage(player, "no-permission-role");
                 return;
             }
             if (plugin.getConfig().getBoolean("team-pvp-force-disable-all", false)) {
@@ -412,7 +478,7 @@ public final class GuiService {
             try {
                 boolean enabled = !team.isTeamPvpProtectionEnabled();
                 if (!plugin.getTeamService().setTeamPvpProtection(team, enabled)) {
-                    plugin.getMessages().send(player, enabled ? "pvp-protection-already-enabled" : "pvp-protection-already-disabled");
+                    plugin.sendMessage(player, enabled ? "pvp-protection-already-enabled" : "pvp-protection-already-disabled");
                     return;
                 }
                 broadcastTeamMessage(team, enabled ? "pvp-protection-enabled" : "pvp-protection-disabled", Map.of());
@@ -420,7 +486,7 @@ public final class GuiService {
                 openSettings(player, team, adminView, adminContext);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to toggle PvP protection for team " + team.getId() + ".", exception);
-                plugin.getMessages().send(player, "settings-save-failed");
+                plugin.sendMessage(player, "settings-save-failed");
             }
         });
         gui.getInventory().setItem(23, screenItem(player, adminView, "settings", "disband", Material.REDSTONE_BLOCK,
@@ -446,9 +512,12 @@ public final class GuiService {
     }
 
     private void openMembers(Player player, Team team, boolean adminView, int page, AdminEditorContext adminContext) {
+        if (!adminView && !publicMenuReady(player, "members")) {
+            return;
+        }
         List<MemberView> members = memberEntries(team);
-        int rows = pagedRows(members.size());
-        List<Integer> contentSlots = pagedContentSlots(rows);
+        int rows = adminView ? pagedRows(members.size()) : 6;
+        List<Integer> contentSlots = adminView ? pagedContentSlots(rows) : corePublicMenus.contentSlots("members");
         int pageSize = contentSlots.size();
         int maxPage = members.isEmpty() ? 0 : (members.size() - 1) / pageSize;
         int currentPage = Math.max(0, Math.min(page, maxPage));
@@ -456,8 +525,12 @@ public final class GuiService {
 
         FoGui gui = adminView
                 ? gui(rows * 9, plugin.getConfig().getString("gui.titles.members", "Members"))
-                : publicGui(rows * 9, player, "members", "ᴍᴇᴍʙᴇʀs");
-        fill(gui);
+                : publicGui(rows * 9, player, "members", "ᴍᴇᴍʙᴇʀs", team);
+        if (!adminView) {
+            gui.setPublicValue("page", String.valueOf(currentPage + 1));
+            gui.setPublicValue("max_page", String.valueOf(maxPage + 1));
+        }
+        fill(gui, player);
         gui.getInventory().setItem(4, screenItem(player, adminView, "members", "header", Material.NETHER_STAR,
                 accent("Team Members"), List.of(
                 "#ffffffLeft-click: promote or demote",
@@ -475,14 +548,26 @@ public final class GuiService {
                 }
                 MemberView member = members.get(memberIndex);
                 int slot = contentSlots.get(index);
-                gui.getInventory().setItem(slot, playerHead(member.id(), accent(member.role().displayName() + ": " + playerName(member.id())), memberActionLore(member)));
-                gui.setAction(slot, event -> handleMemberClick(player, team, adminView, adminContext, member, event.getClick(), currentPage));
+                String memberKey = switch (member.role()) {
+                    case OWNER -> "entry-owner";
+                    case ADMIN -> "entry-admin";
+                    case MEMBER -> "entry-member";
+                };
+                String roleLabel = publicRole(member.role());
+                ItemStack memberItem = adminView
+                        ? playerHead(member.id(), accent(member.role().displayName() + ": " + playerName(member.id())), memberActionLore(member))
+                        : publicPlayerHead(player, "members", memberKey, member.id(),
+                                accent(roleLabel + ": " + playerName(member.id())), memberActionLore(member),
+                                Map.of("player", playerName(member.id()), "role", roleLabel));
+                gui.addContentEntry(slot, memberItem,
+                        event -> handleMemberClick(player, team, adminView, adminContext, member,
+                                event.getClick(), currentPage));
             }
         }
 
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage));
+            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage, !adminView));
             gui.setAction(lastRowStart, event -> {
                 pageSound(player, adminView, false);
                 openMembers(player, team, adminView, currentPage - 1, adminContext);
@@ -497,7 +582,7 @@ public final class GuiService {
         });
         if (start + pageSize < members.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage));
+            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage, !adminView));
             gui.setAction(nextSlot, event -> {
                 pageSound(player, adminView, true);
                 openMembers(player, team, adminView, currentPage + 1, adminContext);
@@ -549,12 +634,15 @@ public final class GuiService {
     }
 
     private void openTransferOwnership(Player player, Team team, boolean adminView, int page, AdminEditorContext adminContext) {
+        if (!adminView && !publicMenuReady(player, "transfer-ownership")) {
+            return;
+        }
         if (!canTransferOwnership(player, team, adminView)) {
             return;
         }
         List<MemberView> candidates = transferOwnershipCandidates(team);
-        int rows = pagedRows(candidates.size());
-        List<Integer> contentSlots = pagedContentSlots(rows);
+        int rows = adminView ? pagedRows(candidates.size()) : 6;
+        List<Integer> contentSlots = adminView ? pagedContentSlots(rows) : corePublicMenus.contentSlots("transfer-ownership");
         int pageSize = contentSlots.size();
         int maxPage = candidates.isEmpty() ? 0 : (candidates.size() - 1) / pageSize;
         int currentPage = Math.max(0, Math.min(page, maxPage));
@@ -562,8 +650,12 @@ public final class GuiService {
 
         FoGui gui = adminView
                 ? gui(rows * 9, plugin.getConfig().getString("gui.titles.transfer-ownership", "Transfer Ownership"))
-                : publicGui(rows * 9, player, "transfer-ownership", "ᴛʀᴀɴsꜰᴇʀ ᴏᴡɴᴇʀsʜɪᴘ");
-        fill(gui);
+                : publicGui(rows * 9, player, "transfer-ownership", "ᴛʀᴀɴsꜰᴇʀ ᴏᴡɴᴇʀsʜɪᴘ", team);
+        if (!adminView) {
+            gui.setPublicValue("page", String.valueOf(currentPage + 1));
+            gui.setPublicValue("max_page", String.valueOf(maxPage + 1));
+        }
+        fill(gui, player);
         if (candidates.isEmpty()) {
             gui.getInventory().setItem(13, screenItem(player, adminView, "transfer-ownership", "empty", Material.GRAY_DYE,
                     "#a7b8b0No Transfer Targets", List.of(
@@ -576,23 +668,39 @@ public final class GuiService {
                 }
                 MemberView candidate = candidates.get(candidateIndex);
                 int slot = contentSlots.get(index);
+                String roleLabel = publicRole(candidate.role());
                 if (candidate.role() == TeamRole.OWNER) {
-                    gui.getInventory().setItem(slot, playerHead(candidate.id(), accent("Current Owner: " + playerName(candidate.id())), List.of(
-                            "#ffffffCurrent role: #03fc88" + candidate.role().displayName(),
-                            "#a7b8b0Already owns this team.")));
-                    gui.setAction(slot, event -> plugin.getMessages().send(player, "member-owner-protected"));
+                    ItemStack ownerItem = adminView
+                            ? playerHead(candidate.id(), accent("Current Owner: " + playerName(candidate.id())), List.of(
+                                    "#ffffffCurrent role: #03fc88" + candidate.role().displayName(),
+                                    "#a7b8b0Already owns this team."))
+                            : publicPlayerHead(player, "transfer-ownership", "owner", candidate.id(),
+                                    accent("Current Owner: " + playerName(candidate.id())), List.of(
+                                            "#ffffffCurrent role: #03fc88" + candidate.role().displayName(),
+                                            "#a7b8b0Already owns this team."),
+                                    Map.of("player", playerName(candidate.id()), "role", roleLabel));
+                    gui.addContentEntry(slot, ownerItem,
+                            event -> plugin.sendMessage(player, "member-owner-protected"));
                 } else {
-                    gui.getInventory().setItem(slot, playerHead(candidate.id(), accent(playerName(candidate.id())), List.of(
-                            "#ffffffCurrent role: #03fc88" + candidate.role().displayName(),
-                            "#ffffffClick to transfer ownership.")));
-                    gui.setAction(slot, event -> openTransferOwnershipConfirm(player, team, adminView, adminContext, candidate.id(), currentPage, TransferConfirmOrigin.TRANSFER_GUI));
+                    ItemStack targetItem = adminView
+                            ? playerHead(candidate.id(), accent(playerName(candidate.id())), List.of(
+                                    "#ffffffCurrent role: #03fc88" + candidate.role().displayName(),
+                                    "#ffffffClick to transfer ownership."))
+                            : publicPlayerHead(player, "transfer-ownership", "target", candidate.id(),
+                                    accent(playerName(candidate.id())), List.of(
+                                            "#ffffffCurrent role: #03fc88" + candidate.role().displayName(),
+                                            "#ffffffClick to transfer ownership."),
+                                    Map.of("player", playerName(candidate.id()), "role", roleLabel));
+                    gui.addContentEntry(slot, targetItem,
+                            event -> openTransferOwnershipConfirm(player, team, adminView, adminContext,
+                                    candidate.id(), currentPage, TransferConfirmOrigin.TRANSFER_GUI));
                 }
             }
         }
 
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage));
+            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage, !adminView));
             gui.setAction(lastRowStart, event -> {
                 pageSound(player, adminView, false);
                 openTransferOwnership(player, team, adminView, currentPage - 1, adminContext);
@@ -601,7 +709,7 @@ public final class GuiService {
         setBackButton(player, gui, () -> openSettings(player, team, adminView, adminContext));
         if (start + pageSize < candidates.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage));
+            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage, !adminView));
             gui.setAction(nextSlot, event -> {
                 pageSound(player, adminView, true);
                 openTransferOwnership(player, team, adminView, currentPage + 1, adminContext);
@@ -616,29 +724,44 @@ public final class GuiService {
     }
 
     private void openTransferOwnershipConfirm(Player player, Team team, boolean adminView, AdminEditorContext adminContext, UUID newOwner, int page, TransferConfirmOrigin origin) {
+        if (!adminView && !publicMenuReady(player, "transfer-confirm")) {
+            return;
+        }
         if (!canTransferOwnership(player, team, adminView)) {
             return;
         }
         if (!canTransferTo(team, newOwner)) {
-            plugin.getMessages().send(player, "member-owner-protected");
+            plugin.sendMessage(player, "member-owner-protected");
             openTransferOrigin(player, team, adminView, adminContext, page, origin);
             return;
         }
 
         TeamRole targetRole = team.roleOf(newOwner);
+        String targetRoleLabel = publicRole(targetRole);
         FoGui gui = adminView
                 ? gui(27, plugin.getConfig().getString("gui.titles.confirm", "Confirm"))
-                : publicGui(27, player, "confirm", "ᴄᴏɴꜰɪʀᴍ");
-        fill(gui);
-        gui.getInventory().setItem(11, screenItem(player, adminView, "confirm", "confirm", Material.LIME_DYE,
+                : publicGui(27, player, "transfer-confirm", "ᴄᴏɴꜰɪʀᴍ", team);
+        if (!adminView) {
+            gui.setPublicValue("player", playerName(newOwner));
+        }
+        fill(gui, player);
+        gui.getInventory().setItem(11, screenItem(player, adminView, "confirm", "transfer-confirm", Material.LIME_DYE,
                 "#3ecf8eConfirm", List.of(
-                "#ffffffTransfer ownership to #03fc88" + playerName(newOwner) + "#ffffff.")));
+                "#ffffffTransfer ownership to #03fc88" + playerName(newOwner) + "#ffffff."),
+                Map.of("player", playerName(newOwner), "role", targetRoleLabel)));
         gui.setAction(11, event -> confirmTransferOwnership(player, team, adminView, adminContext, newOwner, page, origin));
-        gui.getInventory().setItem(13, playerHead(newOwner, accent(playerName(newOwner)), List.of(
-                "#ffffffCurrent role: #03fc88" + targetRole.displayName(),
-                "#ffffffThis player will become the owner.")));
-        gui.getInventory().setItem(15, screenItem(player, adminView, "confirm", "cancel", Material.RED_DYE,
-                "#ff5d73Cancel", List.of("#ffffffReturn without changing ownership.")));
+        ItemStack transferTarget = adminView
+                ? playerHead(newOwner, accent(playerName(newOwner)), List.of(
+                        "#ffffffCurrent role: #03fc88" + targetRole.displayName(),
+                        "#ffffffThis player will become the owner."))
+                : publicPlayerHead(player, "confirm", "transfer-target", newOwner, accent(playerName(newOwner)), List.of(
+                        "#ffffffCurrent role: #03fc88" + targetRole.displayName(),
+                        "#ffffffThis player will become the owner."),
+                        Map.of("player", playerName(newOwner), "role", targetRoleLabel));
+        gui.getInventory().setItem(13, transferTarget);
+        gui.getInventory().setItem(15, screenItem(player, adminView, "confirm", "transfer-cancel", Material.RED_DYE,
+                "#ff5d73Cancel", List.of("#ffffffReturn without changing ownership."),
+                Map.of("player", playerName(newOwner), "role", targetRoleLabel)));
         gui.setAction(15, event -> {
             prepareBackNavigation(player);
             openTransferOrigin(player, team, adminView, adminContext, page, origin);
@@ -656,14 +779,14 @@ public final class GuiService {
             return;
         }
         if (!canTransferTo(team, newOwner)) {
-            plugin.getMessages().send(player, "member-owner-protected");
+            plugin.sendMessage(player, "member-owner-protected");
             openTransferOrigin(player, team, adminView, adminContext, page, origin);
             return;
         }
         try {
             plugin.getTeamService().transfer(team, newOwner);
             sound(player, "member-updated");
-            plugin.getMessages().send(player, "transfer-success", Map.of("{player}", playerName(newOwner)));
+            plugin.sendMessage(player, "transfer-success", Map.of("{player}", playerName(newOwner)));
             if (origin == TransferConfirmOrigin.MEMBERS) {
                 openMembers(player, team, adminView, page, adminContext);
             } else {
@@ -671,7 +794,7 @@ public final class GuiService {
             }
         } catch (SQLException exception) {
             plugin.getLogger().log(Level.WARNING, "Failed to transfer ownership for team " + team.getId() + ".", exception);
-            plugin.getMessages().send(player, "member-action-failed");
+            plugin.sendMessage(player, "member-action-failed");
         }
     }
 
@@ -685,7 +808,7 @@ public final class GuiService {
 
     private boolean canTransferOwnership(Player player, Team team, boolean adminView) {
         if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.TRANSFER)) {
-            plugin.getMessages().send(player, "no-permission-role");
+            plugin.sendMessage(player, "no-permission-role");
             return false;
         }
         return true;
@@ -721,9 +844,12 @@ public final class GuiService {
     }
 
     private void openWarps(Player player, Team team, boolean adminView, int page, AdminEditorContext adminContext) {
+        if (!adminView && !publicMenuReady(player, "warps")) {
+            return;
+        }
         List<Map.Entry<String, Location>> warps = team.getWarps().entrySet().stream().sorted(Map.Entry.comparingByKey()).toList();
-        int rows = pagedRows(warps.size());
-        List<Integer> contentSlots = pagedContentSlots(rows);
+        int rows = adminView ? pagedRows(warps.size()) : 6;
+        List<Integer> contentSlots = adminView ? pagedContentSlots(rows) : corePublicMenus.contentSlots("warps");
         int pageSize = contentSlots.size();
         int maxPage = warps.isEmpty() ? 0 : (warps.size() - 1) / pageSize;
         int currentPage = Math.max(0, Math.min(page, maxPage));
@@ -731,10 +857,14 @@ public final class GuiService {
 
         FoGui gui = adminView
                 ? gui(rows * 9, plugin.getConfig().getString("gui.titles.warps", "Warps"))
-                : publicGui(rows * 9, player, "warps", "ᴡᴀʀᴘs");
-        fill(gui);
+                : publicGui(rows * 9, player, "warps", "ᴡᴀʀᴘs", team);
+        if (!adminView) {
+            gui.setPublicValue("page", String.valueOf(currentPage + 1));
+            gui.setPublicValue("max_page", String.valueOf(maxPage + 1));
+        }
+        fill(gui, player);
         Location home = team.getHome();
-        gui.getInventory().setItem(4, screenItem(player, adminView, "warps", "home", Material.RECOVERY_COMPASS,
+        gui.getInventory().setItem(4, screenItem(player, adminView, "warps", home == null ? "home-missing" : "home", Material.RECOVERY_COMPASS,
                 accent("Team Home"), List.of(
                 home == null ? "#ffffffNo home set." : "#ffffffHome is ready.",
                 "#ffffffLeft-click: teleport",
@@ -744,11 +874,11 @@ public final class GuiService {
             try {
                 if (event.getClick() == ClickType.LEFT) {
                     if (home == null) {
-                        plugin.getMessages().send(player, "home-missing");
+                        plugin.sendMessage(player, "home-missing");
                         return;
                     }
                     if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.USE_HOME)) {
-                        plugin.getMessages().send(player, "no-permission-role");
+                        plugin.sendMessage(player, "no-permission-role");
                         return;
                     }
                     plugin.getTeleportDelayService().start(player, home, "home", () -> sound(player, "teleport"));
@@ -758,22 +888,22 @@ public final class GuiService {
                     mutate(player, team, adminView, TeamAction.SET_HOME, () -> {
                         plugin.getTeamService().setHome(team, player.getLocation());
                         sound(player, "home-set");
-                        plugin.getMessages().send(player, "home-set");
+                        plugin.sendMessage(player, "home-set");
                         openWarps(player, team, adminView, currentPage, adminContext);
                     });
                     return;
                 }
-                if (event.getClick().isShiftClick()) {
+                if (event.getClick() == ClickType.SHIFT_RIGHT) {
                     mutate(player, team, adminView, TeamAction.DELETE_HOME, () -> {
                         plugin.getTeamService().deleteHome(team);
                         sound(player, "home-deleted");
-                        plugin.getMessages().send(player, "home-deleted");
+                        plugin.sendMessage(player, "home-deleted");
                         openWarps(player, team, adminView, currentPage, adminContext);
                     });
                 }
             } catch (Exception exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to apply home action for team " + team.getId() + ".", exception);
-                plugin.getMessages().send(player, "action-failed");
+                plugin.sendMessage(player, "action-failed");
             }
         });
         for (int index = 0; index < contentSlots.size(); index++) {
@@ -784,18 +914,18 @@ public final class GuiService {
             Map.Entry<String, Location> entry = warps.get(warpIndex);
             int slot = contentSlots.get(index);
             boolean passwordProtected = plugin.getTeamService().warpRequiresPassword(team, entry.getKey());
-            gui.getInventory().setItem(slot, screenItem(player, adminView, "warps", "warp", Material.ENDER_PEARL,
+            ItemStack warpItem = screenItem(player, adminView, "warps", passwordProtected && !adminView ? "warp-protected" : "warp", Material.ENDER_PEARL,
                     accent(entry.getKey()), List.of(
                     passwordProtected && !adminView ? "#ffffffProtected warp. Use /team warp <warp> <password>" : "#ffffffLeft-click: teleport",
-                    "#ffffffRight-click: delete warp"), Map.of("warp", entry.getKey())));
-            gui.setAction(slot, event -> {
+                    "#ffffffRight-click: delete warp"), Map.of("warp", entry.getKey()));
+            gui.addContentEntry(slot, warpItem, event -> {
                 if (event.getClick() == ClickType.LEFT) {
                     if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.USE_WARP)) {
-                        plugin.getMessages().send(player, "no-permission-role");
+                        plugin.sendMessage(player, "no-permission-role");
                         return;
                     }
                     if (!adminView && plugin.getTeamService().warpRequiresPassword(team, entry.getKey())) {
-                        plugin.getMessages().send(player, "warp-password-required");
+                        plugin.sendMessage(player, "warp-password-required");
                         return;
                     }
                     plugin.getTeleportDelayService().start(player, entry.getValue(), entry.getKey(), () -> sound(player, "teleport"));
@@ -803,7 +933,7 @@ public final class GuiService {
                     mutate(player, team, adminView, TeamAction.DELETE_WARP, () -> {
                         plugin.getTeamService().deleteWarp(team, entry.getKey());
                         sound(player, "warp-deleted");
-                        plugin.getMessages().send(player, "warp-deleted", Map.of("{warp}", entry.getKey()));
+                        plugin.sendMessage(player, "warp-deleted", Map.of("{warp}", entry.getKey()));
                         openWarps(player, team, adminView, currentPage, adminContext);
                     });
                 }
@@ -811,7 +941,7 @@ public final class GuiService {
         }
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage));
+            gui.getInventory().setItem(lastRowStart, previousPageButton(player, currentPage - 1, maxPage, !adminView));
             gui.setAction(lastRowStart, event -> {
                 pageSound(player, adminView, false);
                 openWarps(player, team, adminView, currentPage - 1, adminContext);
@@ -825,15 +955,15 @@ public final class GuiService {
             String warpName = split[0].toLowerCase(Locale.ROOT);
             String password = split.length > 1 ? split[1].trim() : null;
             if (warpName.isBlank()) {
-                plugin.getMessages().send(player, "usage-setwarp");
+                plugin.sendMessage(player, "usage-setwarp");
                 return;
             }
             if (!plugin.getTeamService().canAddWarp(team, warpName)) {
-                plugin.getMessages().send(player, "warp-limit", Map.of("{max}", String.valueOf(plugin.getTeamService().maxWarps())));
+                plugin.sendMessage(player, "warp-limit", Map.of("{max}", String.valueOf(plugin.getTeamService().maxWarps())));
                 return;
             }
             plugin.getTeamService().setWarp(team, warpName, player.getLocation(), password);
-            plugin.getMessages().send(player, "warp-set", Map.of("{warp}", warpName));
+            plugin.sendMessage(player, "warp-set", Map.of("{warp}", warpName));
             openWarps(player, team, adminView, currentPage, adminContext);
         }), () -> openWarps(player, team, adminView, currentPage, adminContext)));
         setBackButton(player, gui, () -> {
@@ -845,7 +975,7 @@ public final class GuiService {
         });
         if (start + pageSize < warps.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage));
+            gui.getInventory().setItem(nextSlot, nextPageButton(player, currentPage + 1, maxPage, !adminView));
             gui.setAction(nextSlot, event -> {
                 pageSound(player, adminView, true);
                 openWarps(player, team, adminView, currentPage + 1, adminContext);
@@ -879,8 +1009,11 @@ public final class GuiService {
     }
 
     private void openRelations(Player player, Team team, boolean adminView, int page, String search, AdminEditorContext adminContext) {
+        if (!adminView && !publicMenuReady(player, "relations")) {
+            return;
+        }
         if (adminView && !plugin.getConfig().getBoolean("allow-admin-diplomacy-management", true)) {
-            plugin.getMessages().send(player, "action-failed");
+            plugin.sendMessage(player, "action-failed");
             return;
         }
         String normalizedSearch = normalizeSearch(search);
@@ -889,6 +1022,10 @@ public final class GuiService {
                 .filter(candidate -> matchesTeamSearch(candidate, normalizedSearch))
                 .sorted(Comparator.comparing(Team::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
+        if (!adminView) {
+            openPublicRelations(player, team, page, normalizedSearch, teams);
+            return;
+        }
         List<EntryBrowserRequest.Entry> entries = new ArrayList<>(teams.size());
         for (Team other : teams) {
             RelationType relation = plugin.getTeamService().relation(team, other);
@@ -897,40 +1034,124 @@ public final class GuiService {
                     : relation == RelationType.ENEMY ? Material.RED_WOOL
                     : (relation == RelationType.ALLY_REQUEST || incoming) ? Material.YELLOW_WOOL
                     : Material.GRAY_WOOL;
-            String status = relation == RelationType.ALLY ? "ally"
-                    : relation == RelationType.ENEMY ? "enemy"
-                    : incoming ? "ally request received"
-                    : relation == RelationType.ALLY_REQUEST ? "ally request sent"
-                    : "neutral";
-            ItemStack relationItem = adminView ? EditorItemFactory.button(player, material,
+            String status = relation == RelationType.ALLY ? plugin.publicGui().label("relations.ally", "ally")
+                    : relation == RelationType.ENEMY ? plugin.publicGui().label("relations.enemy", "enemy")
+                    : incoming ? plugin.publicGui().label("relations.ally-request-received", "ally request received")
+                    : relation == RelationType.ALLY_REQUEST ? plugin.publicGui().label("relations.ally-request-sent", "ally request sent")
+                    : plugin.publicGui().label("relations.neutral", "neutral");
+            ItemStack relationItem = EditorItemFactory.button(player, material,
                     FoStyle.THEME, FoText.plain(accent(other.getName())), List.of(
                     "#ffffffStatus: " + status,
-                    "#ffffffLeft: ally | Right: enemy | Shift-right: clear"), "manage relation")
-                    : publicItem(player, "relations", "entry", material, accent(other.getName()), List.of(
-                    "#ffffffStatus: " + status,
-                    "#ffffffLeft: ally | Right: enemy | Shift-right: clear"), Map.of("team", other.getName(), "status", status));
+                    "#ffffffLeft: ally | Right: enemy | Shift-right: clear"), "manage relation");
             entries.add(EntryBrowserRequest.Entry.of(String.valueOf(other.getId()), relationItem));
         }
 
-        ItemStack emptyItem = adminView ? EditorItemFactory.button(player, Material.PAPER, FoStyle.BAD, "No Teams Found", normalizedSearch.isBlank()
+        ItemStack emptyItem = EditorItemFactory.button(player, Material.PAPER, FoStyle.BAD, "No Teams Found", normalizedSearch.isBlank()
                 ? List.of("#ffffffThere are no other teams to manage.")
-                : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch), "manage teams")
-                : publicItem(player, "relations", "empty", Material.PAPER, "#ff5d73No Teams Found", normalizedSearch.isBlank()
-                ? List.of("#ffffffThere are no other teams to manage.")
-                : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch), Map.of("search", normalizedSearch));
-        EntryBrowserMenus.open(player, EntryBrowserRequest.builder()
-                .title(adminView ? plugin.getConfig().getString("gui.titles.relations", "Relations")
-                        : GuiTitles.format(plugin.publicGui().title("relations", "ʀᴇʟᴀᴛɪᴏɴs")))
+                : List.of("#ffffffNo teams match: #03fc88" + normalizedSearch), "manage teams");
+        EntryBrowserRequest request = EntryBrowserRequest.builder()
+                .title(plugin.getConfig().getString("gui.titles.relations", "Relations"))
                 .entries(entries)
                 .page(page)
                 .filter(normalizedSearch)
-                .buttons(buttons)
+                .buttons(plugin.publicGui().navigationButtons())
                 .showBack(true)
                 .withoutAddButton()
                 .emptyItem(emptyItem)
                 .context(new RelationsBrowserContext(team.getId(), adminView, adminContext))
-                .build());
+                .build();
+        EntryBrowserMenus.open(player, request);
         screenOpen(player, adminView);
+    }
+
+    private void openPublicRelations(Player player, Team team, int page, String search, List<Team> teams) {
+        List<Integer> slots = corePublicMenus.contentSlots("relations");
+        int pageSize = slots.size();
+        int maxPage = teams.isEmpty() ? 0 : (teams.size() - 1) / pageSize;
+        int currentPage = Math.max(0, Math.min(page, maxPage));
+        FoGui gui = publicGui(54, player, "relations", "ʀᴇʟᴀᴛɪᴏɴs", team);
+        gui.setPublicValue("page", String.valueOf(currentPage + 1));
+        gui.setPublicValue("max_page", String.valueOf(maxPage + 1));
+        for (int index = 0; index < pageSize && currentPage * pageSize + index < teams.size(); index++) {
+            Team other = teams.get(currentPage * pageSize + index);
+            RelationType relation = plugin.getTeamService().relation(team, other);
+            boolean incoming = plugin.getTeamService().hasIncomingAllyRequest(team, other);
+            String key = relation == RelationType.ALLY ? "entry-ally"
+                    : relation == RelationType.ENEMY ? "entry-enemy"
+                    : relation == RelationType.ALLY_REQUEST || incoming ? "entry-request" : "entry";
+            String status = relation == RelationType.ALLY ? plugin.publicGui().label("relations.ally", "ally")
+                    : relation == RelationType.ENEMY ? plugin.publicGui().label("relations.enemy", "enemy")
+                    : incoming ? plugin.publicGui().label("relations.ally-request-received", "ally request received")
+                    : relation == RelationType.ALLY_REQUEST ? plugin.publicGui().label("relations.ally-request-sent", "ally request sent")
+                    : plugin.publicGui().label("relations.neutral", "neutral");
+            int slot = slots.get(index);
+            gui.addContentEntry(slot, publicItem(player, "relations", key, Material.GRAY_WOOL,
+                    other.getName(), List.of(), Map.of("team", other.getName(), "status", status)), click -> {
+                Team current = plugin.getTeamService().byId(other.getId()).orElse(null);
+                if (current == null || current.getId() == team.getId()) {
+                    return;
+                }
+                ClickType type = click.getClick();
+                if (type != ClickType.LEFT && type != ClickType.RIGHT && type != ClickType.SHIFT_RIGHT) {
+                    return;
+                }
+                mutate(player, team, false, TeamAction.MANAGE_RELATIONS, () -> {
+                    if (type == ClickType.SHIFT_RIGHT) {
+                        plugin.getTeamService().clearRelation(team, current);
+                        plugin.sendMessage(player, "relation-cleared", Map.of("{other}", current.getName()));
+                    } else if (type == ClickType.LEFT) {
+                        boolean accepted = plugin.getTeamService().requestOrAcceptAlly(team, current);
+                        plugin.sendMessage(player, accepted ? "ally-request-accepted" : "ally-request-sent",
+                                Map.of("{other}", current.getName()));
+                        if (!accepted) {
+                            notifyTeamLeaders(current, "ally-request-received", Map.of("{other}", team.getName()));
+                        }
+                    } else {
+                        plugin.getTeamService().setEnemy(team, current);
+                        plugin.sendMessage(player, "relation-updated", Map.of("{other}", current.getName(),
+                                "{relation}", plugin.publicGui().label("relations.enemy", "enemy")));
+                    }
+                    openRelations(player, team, false, currentPage, search);
+                });
+            });
+        }
+        if (teams.isEmpty()) {
+            int slot = slots.getFirst();
+            gui.getInventory().setItem(slot, publicItem(player, "relations", "empty", Material.PAPER,
+                    "", List.of(), Map.of("empty_message", search.isBlank()
+                            ? plugin.publicGui().label("relations.empty", "No other teams found.")
+                            : plugin.publicGui().label("relations.no-match", "No teams match: {search}",
+                                    Map.of("search", search)))));
+        }
+        if (currentPage > 0) {
+            gui.getInventory().setItem(45, previousPageButton(player, currentPage - 1, maxPage, true));
+            gui.setAction(45, click -> {
+                pageSound(player, false, false);
+                openRelations(player, team, false, currentPage - 1, search);
+            });
+        }
+        setBackButton(player, gui, () -> openSettings(player, team, false));
+        if (currentPage < maxPage) {
+            gui.getInventory().setItem(53, nextPageButton(player, currentPage + 1, maxPage, true));
+            gui.setAction(53, click -> {
+                pageSound(player, false, true);
+                openRelations(player, team, false, currentPage + 1, search);
+            });
+        }
+        gui.getInventory().setItem(47, markPublicItem(new ItemStack(Material.NAME_TAG), "navigation", "search", Map.of()));
+        gui.setAction(47, click -> {
+            searchSound(player, false, false);
+            promptRelationTeamSearch(player, team, false, search);
+        });
+        if (!search.isBlank()) {
+            gui.getInventory().setItem(51, markPublicItem(new ItemStack(Material.MILK_BUCKET), "navigation", "clear-search", Map.of()));
+            gui.setAction(51, click -> {
+                searchSound(player, false, true);
+                openRelations(player, team, false, 0, "");
+            });
+        }
+        openGui(player, gui);
+        screenOpen(player, false);
     }
 
     public void openInfo(Player viewer, Team team) {
@@ -942,9 +1163,12 @@ public final class GuiService {
     }
 
     private void openInfo(Player viewer, Team team, int page, AdminEditorContext adminContext) {
+        if (adminContext == null && !publicMenuReady(viewer, "info")) {
+            return;
+        }
         List<MemberView> members = memberEntries(team);
-        int rows = pagedRows(members.size());
-        List<Integer> contentSlots = pagedContentSlots(rows);
+        int rows = adminContext != null ? pagedRows(members.size()) : 6;
+        List<Integer> contentSlots = adminContext != null ? pagedContentSlots(rows) : corePublicMenus.contentSlots("info");
         int pageSize = contentSlots.size();
         int maxPage = members.isEmpty() ? 0 : (members.size() - 1) / pageSize;
         int currentPage = Math.max(0, Math.min(page, maxPage));
@@ -952,19 +1176,27 @@ public final class GuiService {
 
         FoGui gui = adminContext != null
                 ? gui(rows * 9, plugin.getConfig().getString("gui.titles.info", "Info"))
-                : publicGui(rows * 9, viewer, "info", "ᴛᴇᴀᴍ ɪɴꜰᴏ");
-        fill(gui);
-        gui.getInventory().setItem(2, screenItem(viewer, adminContext != null, "info", "team", Material.NAME_TAG,
-                accent(team.getName()), teamInfoLore(team), Map.of("team", team.getName(), "tag", team.getTag(),
+                : publicGui(rows * 9, viewer, "info", "ᴛᴇᴀᴍ ɪɴꜰᴏ", team);
+        if (adminContext == null) {
+            gui.setPublicValue("page", String.valueOf(currentPage + 1));
+            gui.setPublicValue("max_page", String.valueOf(maxPage + 1));
+        }
+        fill(gui, viewer);
+        boolean levelEnabled = plugin.getTeamLevelService().isEnabled();
+        gui.getInventory().setItem(2, screenItem(viewer, adminContext != null, "info", levelEnabled ? "team-with-level" : "team", Material.NAME_TAG,
+                accent(team.getName()), teamInfoLore(team), Map.of("team", team.getName(), "tag", tag(team),
                         "description", team.getDescription(), "score", String.valueOf(team.getScore()),
-                        "balance", Text.money(team.getBalance()))));
+                        "balance", Text.money(team.getBalance()), "level", String.valueOf(team.getTeamLevel()),
+                        "xp", String.valueOf(team.getTeamXp()),
+                        "required_xp", String.valueOf(plugin.getTeamLevelService().requiredXp(team)))));
+        List<String> allyLines = alliesLore(team);
         gui.getInventory().setItem(4, screenItem(viewer, adminContext != null, "info", "allies", Material.BELL,
-                "#3ecf8eAllies", alliesLore(team)));
+                "#3ecf8eAllies", allyLines, Map.of(), Map.of("allies", allyLines)));
         gui.getInventory().setItem(6, screenItem(viewer, adminContext != null, "info", "size", Material.PAPER,
                 accent("Team Size"), List.of(plugin.getMessages().render("member-limit", "member-limit", Map.of(
                 "{current}", String.valueOf(team.getMemberCount()),
                 "{max}", String.valueOf(team.getMemberCap())
-        )))));
+        ))), Map.of("current", String.valueOf(team.getMemberCount()), "max", String.valueOf(team.getMemberCap()))));
 
         if (members.isEmpty()) {
             gui.getInventory().setItem(13, screenItem(viewer, adminContext != null, "members", "empty", Material.GRAY_DYE,
@@ -977,12 +1209,18 @@ public final class GuiService {
                 }
                 MemberView member = members.get(memberIndex);
                 int slot = contentSlots.get(index);
-                gui.getInventory().setItem(slot, playerHead(member.id(), accent(member.role().displayName() + ": " + playerName(member.id())), memberInfoLore(member.id(), member.role())));
+                ItemStack memberItem = adminContext != null
+                        ? playerHead(member.id(), accent(member.role().displayName() + ": " + playerName(member.id())), memberInfoLore(member.id(), member.role()))
+                        : publicPlayerHead(viewer, "info", "member", member.id(),
+                                accent(publicRole(member.role()) + ": " + playerName(member.id())), memberInfoLore(member.id(), member.role()),
+                                Map.of("player", playerName(member.id()), "role", publicRole(member.role()),
+                                        "status", playerStatusValue(member.id())));
+                gui.addContentEntry(slot, memberItem, null);
             }
         }
         int lastRowStart = gui.getInventory().getSize() - 9;
         if (currentPage > 0) {
-            gui.getInventory().setItem(lastRowStart, previousPageButton(viewer, currentPage - 1, maxPage));
+            gui.getInventory().setItem(lastRowStart, previousPageButton(viewer, currentPage - 1, maxPage, adminContext == null));
             gui.setAction(lastRowStart, event -> {
                 pageSound(viewer, adminContext != null, false);
                 openInfo(viewer, team, currentPage - 1, adminContext);
@@ -991,11 +1229,11 @@ public final class GuiService {
         if (adminContext != null) {
             setBackButton(viewer, gui, () -> openAdminEditor(viewer, team, adminContext));
         } else {
-            gui.getInventory().setItem(lastRowStart + 4, emptyInfoPane());
+            setBackButton(viewer, gui, () -> openDashboard(viewer));
         }
         if (start + pageSize < members.size()) {
             int nextSlot = gui.getInventory().getSize() - 1;
-            gui.getInventory().setItem(nextSlot, nextPageButton(viewer, currentPage + 1, maxPage));
+            gui.getInventory().setItem(nextSlot, nextPageButton(viewer, currentPage + 1, maxPage, adminContext == null));
             gui.setAction(nextSlot, event -> {
                 pageSound(viewer, adminContext != null, true);
                 openInfo(viewer, team, currentPage + 1, adminContext);
@@ -1007,7 +1245,7 @@ public final class GuiService {
 
     public void openEditorHome(Player player) {
         FoGui gui = gui(27, plugin.getConfig().getString("gui.titles.editor", "Editor"));
-        fill(gui);
+        fill(gui, player);
         gui.getInventory().setItem(10, item(Material.BOOK, accent("Team Browser"), List.of(
                 "#ffffffSearch and edit existing teams.",
                 "#ffffffCreate ownerless admin teams.",
@@ -1023,7 +1261,7 @@ public final class GuiService {
             gui.getInventory().setItem(slot, item(category.material(), accent(category.title()), lore));
             gui.setAction(slot, event -> {
                 if ("team-level".equals(category.id()) && !plugin.getTeamLevelService().isFoLevelsAvailable()) {
-                    plugin.getMessages().send(player, "team-level-unavailable");
+                    plugin.sendMessage(player, "team-level-unavailable");
                     return;
                 }
                 openConfigCategory(player, category.id());
@@ -1059,7 +1297,7 @@ public final class GuiService {
                 .entries(entries)
                 .page(page)
                 .filter(normalizedSearch)
-                .buttons(buttons)
+                .buttons(plugin.publicGui().navigationButtons())
                 .showBack(true)
                 .addButton(EditorItemFactory.button(player, Material.ANVIL, FoStyle.GOOD, "Create Team",
                         List.of("#ffffffCreate a team without an owner."), "create team"))
@@ -1096,14 +1334,14 @@ public final class GuiService {
                         return;
                     }
                     if (plugin.getTeamService().isNameTaken(input)) {
-                        plugin.getMessages().send(player, "team-name-taken");
+                        plugin.sendMessage(player, "team-name-taken");
                         return;
                     }
                     Team team = plugin.getTeamService().createOwnerlessTeam(input);
                     openAdminEditor(player, team, search, holder.request().page());
                 } catch (SQLException exception) {
                     plugin.getLogger().log(Level.WARNING, "Failed to create ownerless team from editor.", exception);
-                    plugin.getMessages().send(player, "team-create-failed");
+                    plugin.sendMessage(player, "team-create-failed");
                 }
                 });
             }
@@ -1117,7 +1355,7 @@ public final class GuiService {
             }
             case CLEAR_SEARCH -> {
                 plugin.getEditorSounds().clearSearch(player);
-                plugin.getMessages().send(player, "editor-search-cleared");
+                plugin.sendMessage(player, "editor-search-cleared");
                 openBrowser(player, 0, "");
             }
             case PREVIOUS_PAGE -> {
@@ -1138,7 +1376,7 @@ public final class GuiService {
                                              RelationsBrowserContext context) {
         Team team = plugin.getTeamService().byId(context.teamId()).orElse(null);
         if (team == null) {
-            plugin.getMessages().send(player, "action-failed");
+            plugin.sendMessage(player, "action-failed");
             return;
         }
         String search = holder.request().filter();
@@ -1148,19 +1386,24 @@ public final class GuiService {
                 if (other == null || other.getId() == team.getId()) {
                     return;
                 }
+                if (click.clickType() != ClickType.LEFT
+                        && click.clickType() != ClickType.RIGHT
+                        && click.clickType() != ClickType.SHIFT_RIGHT) {
+                    return;
+                }
                 mutate(player, team, context.adminView(), TeamAction.MANAGE_RELATIONS, () -> {
-                    if (click.clickType() != null && click.clickType().isShiftClick()) {
+                    if (click.clickType() == ClickType.SHIFT_RIGHT) {
                         plugin.getTeamService().clearRelation(team, other);
-                        plugin.getMessages().send(player, "relation-cleared", Map.of("{other}", other.getName()));
+                        plugin.sendMessage(player, "relation-cleared", Map.of("{other}", other.getName()));
                     } else if (click.clickType() == ClickType.LEFT) {
                         boolean accepted = plugin.getTeamService().requestOrAcceptAlly(team, other);
-                        plugin.getMessages().send(player, accepted ? "ally-request-accepted" : "ally-request-sent", Map.of("{other}", other.getName()));
+                        plugin.sendMessage(player, accepted ? "ally-request-accepted" : "ally-request-sent", Map.of("{other}", other.getName()));
                         if (!accepted) {
                             notifyTeamLeaders(other, "ally-request-received", Map.of("{other}", team.getName()));
                         }
                     } else if (click.clickType() == ClickType.RIGHT) {
                         plugin.getTeamService().setEnemy(team, other);
-                        plugin.getMessages().send(player, "relation-updated", Map.of("{other}", other.getName(), "{relation}", "enemy"));
+                        plugin.sendMessage(player, "relation-updated", Map.of("{other}", other.getName(), "{relation}", "enemy"));
                     }
                     openRelations(player, team, context.adminView(), holder.request().page(), search, context.adminContext());
                 });
@@ -1175,7 +1418,7 @@ public final class GuiService {
             }
             case CLEAR_SEARCH -> {
                 searchSound(player, context.adminView(), true);
-                plugin.getMessages().send(player, "editor-search-cleared");
+                plugin.sendMessage(player, "editor-search-cleared");
                 openRelations(player, team, context.adminView(), 0, "", context.adminContext());
             }
             case PREVIOUS_PAGE -> {
@@ -1206,12 +1449,12 @@ public final class GuiService {
                 .findFirst()
                 .orElse(null);
         if (category == null) {
-            plugin.getMessages().send(player, "action-failed");
+            plugin.sendMessage(player, "action-failed");
             openEditorHome(player);
             return;
         }
         FoGui gui = gui(configCategorySize(category), category.title());
-        fill(gui);
+        fill(gui, player);
         for (int index = 0; index < Math.min(category.settings().size(), EDITOR_CONTENT_SLOTS.length); index++) {
             ConfigSetting setting = category.settings().get(index);
             int slot = EDITOR_CONTENT_SLOTS[index];
@@ -1257,7 +1500,7 @@ public final class GuiService {
         plugin.getInputGuiService().openInput(player, prompt, input -> {
             Object parsed = parseConfigSetting(setting, input);
             if (parsed == null) {
-                plugin.getMessages().send(player, "editor-setting-invalid", Map.of(
+                plugin.sendMessage(player, "editor-setting-invalid", Map.of(
                         "{setting}", setting.label(),
                         "{format}", setting.expectedInput()
                 ));
@@ -1275,7 +1518,7 @@ public final class GuiService {
         try {
             plugin.saveConfig();
             plugin.reloadPlugin();
-            plugin.getMessages().send(player, "editor-setting-saved", Map.of(
+            plugin.sendMessage(player, "editor-setting-saved", Map.of(
                     "{setting}", setting.label(),
                     "{value}", displayConfigValue(setting, value)
             ));
@@ -1293,7 +1536,7 @@ public final class GuiService {
                 plugin.getLogger().log(Level.WARNING, "Failed to roll back editor setting " + setting.path() + ".", rollbackException);
             }
             plugin.getLogger().log(Level.WARNING, "Failed to apply editor setting " + setting.path() + ".", exception);
-            plugin.getMessages().send(player, "editor-setting-save-failed", Map.of("{setting}", setting.label()));
+            plugin.sendMessage(player, "editor-setting-save-failed", Map.of("{setting}", setting.label()));
             plugin.getEditorSounds().error(player);
         }
         openConfigCategory(player, categoryId);
@@ -1396,17 +1639,17 @@ public final class GuiService {
                 "Search",
                 currentSearch,
                 "team name, tag, or owner",
-                plugin.getMessages().render("prompt-team-search"),
+                plugin.getMessages().config().getString("prompt-team-search", ""),
                 80
         );
         plugin.getInputGuiService().openInput(player, prompt, input -> {
             String search = normalizeSearch(input);
             if (search.isBlank()) {
-                plugin.getMessages().send(player, "editor-search-cleared");
+                plugin.sendMessage(player, "editor-search-cleared");
                 openBrowser(player, 0);
                 return;
             }
-            plugin.getMessages().send(player, "editor-search-applied", Map.of("{query}", search));
+            plugin.sendMessage(player, "editor-search-applied", Map.of("{query}", search));
             openBrowser(player, 0, search);
         }, () -> openBrowser(player, 0, currentSearch));
     }
@@ -1423,17 +1666,17 @@ public final class GuiService {
                 "Search",
                 currentSearch,
                 "team name, tag, or owner",
-                plugin.getMessages().render("prompt-team-search"),
+                plugin.getMessages().config().getString("prompt-team-search", ""),
                 80
         );
         plugin.getInputGuiService().openInput(player, prompt, input -> {
             String relationSearch = normalizeSearch(input);
             if (relationSearch.isBlank()) {
-                plugin.getMessages().send(player, "editor-search-cleared");
+                plugin.sendMessage(player, "editor-search-cleared");
                 openRelations(player, team, adminView, 0, "", adminContext);
                 return;
             }
-            plugin.getMessages().send(player, "editor-search-applied", Map.of("{query}", relationSearch));
+            plugin.sendMessage(player, "editor-search-applied", Map.of("{query}", relationSearch));
             openRelations(player, team, adminView, 0, relationSearch, adminContext);
         }, () -> openRelations(player, team, adminView, 0, currentSearch, adminContext));
     }
@@ -1530,7 +1773,7 @@ public final class GuiService {
 
     private void openAdminEditor(Player player, Team team, AdminEditorContext adminContext) {
         FoGui gui = gui(36, plugin.getConfig().getString("gui.titles.editor", "Editor"));
-        fill(gui);
+        fill(gui, player);
         gui.getInventory().setItem(10, item(Material.NAME_TAG, "#03fc88Open Public Info", List.of("#ffffffPreview the player-facing team info.")));
         gui.setAction(10, event -> openInfo(player, team, 0, adminContext));
         gui.getInventory().setItem(11, item(Material.COMPARATOR, "#03fc88Edit Settings", List.of("#ffffffEdit team metadata and access.")));
@@ -1545,18 +1788,18 @@ public final class GuiService {
                 double amount = LargeNumberParser.parseDouble(input)
                         .orElseThrow(() -> new NumberFormatException("Invalid money amount"));
                 if (!Double.isFinite(amount) || amount < 0) {
-                    plugin.getMessages().send(player, "amount-non-negative");
+                    plugin.sendMessage(player, "amount-non-negative");
                     openAdminEditor(player, team, adminContext);
                     return;
                 }
                 plugin.getTeamService().setBalance(team, amount);
                 openAdminEditor(player, team, adminContext);
             } catch (NumberFormatException exception) {
-                plugin.getMessages().send(player, "money-invalid");
+                plugin.sendMessage(player, "money-invalid");
                 openAdminEditor(player, team, adminContext);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to set balance for team " + team.getId() + ".", exception);
-                plugin.getMessages().send(player, "settings-save-failed");
+                plugin.sendMessage(player, "settings-save-failed");
                 openAdminEditor(player, team, adminContext);
             }
         }, () -> openAdminEditor(player, team, adminContext)));
@@ -1565,17 +1808,17 @@ public final class GuiService {
             try {
                 int score = Integer.parseInt(input);
                 if (score < 0) {
-                    plugin.getMessages().send(player, "score-non-negative");
+                    plugin.sendMessage(player, "score-non-negative");
                     return;
                 }
                 plugin.getTeamService().setScore(team, score);
                 openAdminEditor(player, team, adminContext);
             } catch (NumberFormatException exception) {
-                plugin.getMessages().send(player, "score-invalid");
+                plugin.sendMessage(player, "score-invalid");
                 openAdminEditor(player, team, adminContext);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to set score for team " + team.getId() + ".", exception);
-                plugin.getMessages().send(player, "settings-save-failed");
+                plugin.sendMessage(player, "settings-save-failed");
                 openAdminEditor(player, team, adminContext);
             }
         }, () -> openAdminEditor(player, team, adminContext)));
@@ -1593,12 +1836,15 @@ public final class GuiService {
     }
 
     public void openSharedChest(Player player, Team team, boolean adminView) {
+        if (!publicMenuReady(player, "chest")) {
+            return;
+        }
         if (adminView && !plugin.getConfig().getBoolean("allow-admin-echest-access", true)) {
-            plugin.getMessages().send(player, "action-failed");
+            plugin.sendMessage(player, "action-failed");
             return;
         }
         if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), TeamAction.USE_ECHEST)) {
-            plugin.getMessages().send(player, "no-permission-role");
+            plugin.sendMessage(player, "no-permission-role");
             return;
         }
         SharedChestHolder holder = sharedChests.computeIfAbsent(team.getId(), ignored -> createSharedChest(team));
@@ -1607,22 +1853,25 @@ public final class GuiService {
     }
 
     public void openUpgrades(Player player, Team team, boolean adminView) {
+        if (!adminView && !publicMenuReady(player, "upgrades")) {
+            return;
+        }
         if (!adminView && !canManageUpgrades(team, player.getUniqueId())) {
-            plugin.getMessages().send(player, "no-permission-role");
+            plugin.sendMessage(player, "no-permission-role");
             return;
         }
         if (!plugin.getEconomyService().isAvailable()) {
-            plugin.getMessages().send(player, "upgrades-economy-disabled");
+            plugin.sendMessage(player, "upgrades-economy-disabled");
             return;
         }
         FoGui gui = adminView
                 ? gui(27, plugin.getConfig().getString("gui.titles.upgrades", "Team Upgrades"))
-                : publicGui(27, player, "upgrades", "ᴛᴇᴀᴍ ᴜᴘɢʀᴀᴅᴇs");
-        fill(gui);
+                : publicGui(27, player, "upgrades", "ᴛᴇᴀᴍ ᴜᴘɢʀᴀᴅᴇs", team);
+        fill(gui, player);
 
         double sizeCost = plugin.getTeamService().nextMemberCapUpgradeCost(team);
         boolean sizeMaxed = sizeCost < 0;
-        gui.getInventory().setItem(11, screenItem(player, adminView, "upgrades", "size",
+        gui.getInventory().setItem(11, screenItem(player, adminView, "upgrades", sizeMaxed ? "size-maxed" : "size",
                 sizeMaxed ? Material.BARRIER : Material.PLAYER_HEAD, accent("Team Size Upgrade"), List.of(
                 "#ffffffCurrent cap: #03fc88" + team.getMemberCap(),
                 sizeMaxed ? "#ff5d73Already at maximum cap." : "#ffffffNext cap: #03fc88" + (team.getMemberCap() + 1),
@@ -1632,48 +1881,48 @@ public final class GuiService {
                 "cost", Text.money(sizeCost))));
         gui.setAction(11, event -> {
             if (!adminView && !canManageUpgrades(team, player.getUniqueId())) {
-                plugin.getMessages().send(player, "no-permission-role");
+                plugin.sendMessage(player, "no-permission-role");
                 return;
             }
             if (!plugin.getEconomyService().isAvailable()) {
-                plugin.getMessages().send(player, "upgrades-economy-disabled");
+                plugin.sendMessage(player, "upgrades-economy-disabled");
                 return;
             }
             double cost = plugin.getTeamService().nextMemberCapUpgradeCost(team);
             if (cost < 0) {
-                plugin.getMessages().send(player, "upgrade-team-size-max", Map.of("{max}", String.valueOf(plugin.getTeamService().maxMembers())));
+                plugin.sendMessage(player, "upgrade-team-size-max", Map.of("{max}", String.valueOf(plugin.getTeamService().maxMembers())));
                 return;
             }
             if (plugin.getEconomyService().balance(player) < cost) {
-                plugin.getMessages().send(player, "upgrade-insufficient-funds", Map.of("{cost}", Text.money(cost)));
+                plugin.sendMessage(player, "upgrade-insufficient-funds", Map.of("{cost}", Text.money(cost)));
                 return;
             }
             if (!plugin.getEconomyService().withdraw(player, cost)) {
-                plugin.getMessages().send(player, "economy-transaction-failed");
+                plugin.sendMessage(player, "economy-transaction-failed");
                 return;
             }
             try {
                 if (!plugin.getTeamService().upgradeMemberCap(team)) {
                     plugin.getEconomyService().deposit(player, cost);
-                    plugin.getMessages().send(player, "upgrade-team-size-max", Map.of("{max}", String.valueOf(plugin.getTeamService().maxMembers())));
+                    plugin.sendMessage(player, "upgrade-team-size-max", Map.of("{max}", String.valueOf(plugin.getTeamService().maxMembers())));
                     return;
                 }
-                plugin.getMessages().send(player, "upgrade-team-size-success", Map.of("{cost}", Text.money(cost), "{cap}", String.valueOf(team.getMemberCap())));
+                plugin.sendMessage(player, "upgrade-team-size-success", Map.of("{cost}", Text.money(cost), "{cap}", String.valueOf(team.getMemberCap())));
                 sound(player, "upgrade");
                 openUpgrades(player, team, adminView);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to purchase member-cap upgrade for team " + team.getId() + ".", exception);
                 if (plugin.getEconomyService().deposit(player, cost)) {
-                    plugin.getMessages().send(player, "upgrade-purchase-failed-refunded");
+                    plugin.sendMessage(player, "upgrade-purchase-failed-refunded");
                 } else {
-                    plugin.getMessages().send(player, "upgrade-purchase-failed");
+                    plugin.sendMessage(player, "upgrade-purchase-failed");
                 }
             }
         });
 
         double echestCost = plugin.getTeamService().nextEchestRowsUpgradeCost(team);
         boolean echestMaxed = echestCost < 0;
-        gui.getInventory().setItem(15, screenItem(player, adminView, "upgrades", "echest",
+        gui.getInventory().setItem(15, screenItem(player, adminView, "upgrades", echestMaxed ? "echest-maxed" : "echest",
                 echestMaxed ? Material.BARRIER : Material.ENDER_CHEST, accent("Team Echest Upgrade"), List.of(
                 "#ffffffCurrent rows: #03fc88" + team.getEchestRows(),
                 "#ffffffMaximum rows: #03fc88" + plugin.getTeamService().maxEchestRows(),
@@ -1684,41 +1933,42 @@ public final class GuiService {
                 "next", String.valueOf(team.getEchestRows() + 1), "cost", Text.money(echestCost))));
         gui.setAction(15, event -> {
             if (!adminView && !canManageUpgrades(team, player.getUniqueId())) {
-                plugin.getMessages().send(player, "no-permission-role");
+                plugin.sendMessage(player, "no-permission-role");
                 return;
             }
         if (!plugin.getEconomyService().isAvailable()) {
-                plugin.getMessages().send(player, "upgrades-economy-disabled");
+                plugin.sendMessage(player, "upgrades-economy-disabled");
                 return;
             }
             double cost = plugin.getTeamService().nextEchestRowsUpgradeCost(team);
             if (cost < 0) {
-                plugin.getMessages().send(player, "upgrade-echest-max", Map.of("{max}", String.valueOf(plugin.getTeamService().maxEchestRows())));
+                plugin.sendMessage(player, "upgrade-echest-max", Map.of("{max}", String.valueOf(plugin.getTeamService().maxEchestRows())));
                 return;
             }
             if (plugin.getEconomyService().balance(player) < cost) {
-                plugin.getMessages().send(player, "upgrade-insufficient-funds", Map.of("{cost}", Text.money(cost)));
+                plugin.sendMessage(player, "upgrade-insufficient-funds", Map.of("{cost}", Text.money(cost)));
                 return;
             }
             if (!plugin.getEconomyService().withdraw(player, cost)) {
-                plugin.getMessages().send(player, "economy-transaction-failed");
+                plugin.sendMessage(player, "economy-transaction-failed");
                 return;
             }
             try {
                 if (!plugin.getTeamService().upgradeEchestRows(team)) {
                     plugin.getEconomyService().deposit(player, cost);
-                    plugin.getMessages().send(player, "upgrade-echest-max", Map.of("{max}", String.valueOf(plugin.getTeamService().maxEchestRows())));
+                    plugin.sendMessage(player, "upgrade-echest-max", Map.of("{max}", String.valueOf(plugin.getTeamService().maxEchestRows())));
                     return;
                 }
-                plugin.getMessages().send(player, "upgrade-echest-success", Map.of("{cost}", Text.money(cost), "{rows}", String.valueOf(team.getEchestRows())));
+                unlockSharedChestRow(team);
+                plugin.sendMessage(player, "upgrade-echest-success", Map.of("{cost}", Text.money(cost), "{rows}", String.valueOf(team.getEchestRows())));
                 sound(player, "upgrade");
                 openUpgrades(player, team, adminView);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to purchase shared-chest upgrade for team " + team.getId() + ".", exception);
                 if (plugin.getEconomyService().deposit(player, cost)) {
-                    plugin.getMessages().send(player, "upgrade-purchase-failed-refunded");
+                    plugin.sendMessage(player, "upgrade-purchase-failed-refunded");
                 } else {
-                    plugin.getMessages().send(player, "upgrade-purchase-failed");
+                    plugin.sendMessage(player, "upgrade-purchase-failed");
                 }
             }
         });
@@ -1760,6 +2010,20 @@ public final class GuiService {
         }
     }
 
+    public void closeOpenSharedChestsForReload() {
+        List<SharedChestHolder> holders = new ArrayList<>(sharedChests.values());
+        for (SharedChestHolder holder : holders) {
+            saveSharedChest(holder);
+        }
+        sharedChests.clear();
+        pendingSharedChestSaves.clear();
+        for (SharedChestHolder holder : holders) {
+            for (HumanEntity viewer : new ArrayList<>(holder.getInventory().getViewers())) {
+                viewer.closeInventory();
+            }
+        }
+    }
+
     public void closeSharedChest(Team team) {
         SharedChestHolder holder = sharedChests.remove(team.getId());
         if (holder == null) {
@@ -1774,9 +2038,13 @@ public final class GuiService {
 
     public void saveSharedChest(SharedChestHolder holder) {
         plugin.getTeamService().byId(holder.getTeamId()).ifPresent(team -> {
-            team.getEchestContents().clear();
-            for (ItemStack item : holder.getInventory().getContents()) {
-                team.getEchestContents().add(cloneItem(item));
+            List<ItemStack> stored = team.getEchestContents();
+            int unlockedSlots = holder.unlockedRows() * 9;
+            while (stored.size() < unlockedSlots) {
+                stored.add(null);
+            }
+            for (int slot = 0; slot < unlockedSlots; slot++) {
+                stored.set(slot, cloneItem(holder.getInventory().getItem(slot)));
             }
             try {
                 plugin.getTeamService().saveTeamEchest(team);
@@ -1791,10 +2059,13 @@ public final class GuiService {
     }
 
     private void openConfirm(Player player, Team team, boolean adminView, AdminEditorContext adminContext, ConfirmBackTarget backTarget) {
+        if (!adminView && !publicMenuReady(player, "disband-confirm")) {
+            return;
+        }
         FoGui gui = adminView
                 ? gui(27, plugin.getConfig().getString("gui.titles.confirm", "Confirm"))
-                : publicGui(27, player, "confirm", "ᴄᴏɴꜰɪʀᴍ");
-        fill(gui);
+                : publicGui(27, player, "confirm", "ᴄᴏɴꜰɪʀᴍ", team);
+        fill(gui, player);
         gui.getInventory().setItem(11, screenItem(player, adminView, "confirm", "confirm", Material.LIME_DYE,
                 "#3ecf8eConfirm", List.of("#ffffffClick to continue.")));
         gui.setAction(11, event -> {
@@ -1805,7 +2076,7 @@ public final class GuiService {
                         closeSharedChest(team);
                         plugin.getTeamService().disband(team);
                         sound(player, "disbanded");
-                        plugin.getMessages().send(player, "team-disbanded", Map.of("{team}", team.getName()));
+                        plugin.sendMessage(player, "team-disbanded", Map.of("{team}", team.getName()));
                         player.closeInventory();
                     });
                 } else {
@@ -1813,13 +2084,13 @@ public final class GuiService {
                     closeSharedChest(team);
                     plugin.getTeamService().disband(team);
                     sound(player, "disbanded");
-                    plugin.getMessages().send(player, "team-deleted", Map.of("{team}", team.getName()));
+                    plugin.sendMessage(player, "team-deleted", Map.of("{team}", team.getName()));
                     AdminEditorContext context = contextOrDefault(adminContext);
                     openBrowser(player, context.browserPage(), context.browserSearch());
                 }
             } catch (Exception exception) {
                 plugin.getLogger().log(Level.WARNING, "Failed to delete team " + team.getId() + ".", exception);
-                plugin.getMessages().send(player, "action-failed");
+                plugin.sendMessage(player, "action-failed");
             }
         });
         gui.getInventory().setItem(15, screenItem(player, adminView, "confirm", "cancel", Material.RED_DYE,
@@ -1843,16 +2114,16 @@ public final class GuiService {
     private void handleMemberClick(Player actor, Team team, boolean adminView, AdminEditorContext adminContext, MemberView entry, ClickType clickType, int page) {
         try {
             if (entry.role() == TeamRole.OWNER && !adminView) {
-                plugin.getMessages().send(actor, "member-owner-protected");
+                plugin.sendMessage(actor, "member-owner-protected");
                 return;
             }
             if (clickType.isShiftClick() && clickType.isRightClick()) {
                 if (!adminView && !plugin.getTeamService().can(team, actor.getUniqueId(), TeamAction.TRANSFER)) {
-                    plugin.getMessages().send(actor, "no-permission-role");
+                    plugin.sendMessage(actor, "no-permission-role");
                     return;
                 }
                 if (entry.role() == TeamRole.OWNER) {
-                    plugin.getMessages().send(actor, "member-owner-protected");
+                    plugin.sendMessage(actor, "member-owner-protected");
                     return;
                 }
                 openTransferOwnershipConfirm(actor, team, adminView, adminContext, entry.id(), page, TransferConfirmOrigin.MEMBERS);
@@ -1860,19 +2131,19 @@ public final class GuiService {
             }
             if (clickType == ClickType.RIGHT) {
                 if (!adminView && !plugin.getTeamService().can(team, actor.getUniqueId(), TeamAction.KICK)) {
-                    plugin.getMessages().send(actor, "no-permission-role");
+                    plugin.sendMessage(actor, "no-permission-role");
                     return;
                 }
                 if (entry.role() == TeamRole.OWNER) {
-                    plugin.getMessages().send(actor, "member-owner-protected");
+                    plugin.sendMessage(actor, "member-owner-protected");
                     return;
                 }
                 plugin.getTeamService().kick(team, entry.id());
                 sound(actor, "member-updated");
-                plugin.getMessages().send(actor, "kick-success", Map.of("{player}", playerName(entry.id())));
+                plugin.sendMessage(actor, "kick-success", Map.of("{player}", playerName(entry.id())));
                 Player kicked = Bukkit.getPlayer(entry.id());
                 if (kicked != null) {
-                    plugin.getMessages().send(kicked, "kick-target", Map.of("{team}", team.getName()));
+                    plugin.sendMessage(kicked, "kick-target", Map.of("{team}", team.getName()));
                 }
                 openMembers(actor, team, adminView, page, adminContext);
                 return;
@@ -1880,29 +2151,29 @@ public final class GuiService {
             if (clickType == ClickType.LEFT) {
                 if (entry.role() == TeamRole.MEMBER) {
                     if (!adminView && !plugin.getTeamService().can(team, actor.getUniqueId(), TeamAction.PROMOTE)) {
-                        plugin.getMessages().send(actor, "no-permission-role");
+                        plugin.sendMessage(actor, "no-permission-role");
                         return;
                     }
                     if (!plugin.getTeamService().promote(team, entry.id())) {
-                        plugin.getMessages().send(actor, "admin-limit", Map.of("{max}", String.valueOf(plugin.getTeamService().maxAdmins())));
+                        plugin.sendMessage(actor, "admin-limit", Map.of("{max}", String.valueOf(plugin.getTeamService().maxAdmins())));
                         return;
                     }
-                    plugin.getMessages().send(actor, "promote-success", Map.of("{player}", playerName(entry.id()), "{role}", "admin"));
+                    plugin.sendMessage(actor, "promote-success", Map.of("{player}", playerName(entry.id()), "{role}", publicRole(TeamRole.ADMIN)));
                     sound(actor, "member-updated");
                 } else if (entry.role() == TeamRole.ADMIN) {
                     if (!adminView && !plugin.getTeamService().can(team, actor.getUniqueId(), TeamAction.DEMOTE)) {
-                        plugin.getMessages().send(actor, "no-permission-role");
+                        plugin.sendMessage(actor, "no-permission-role");
                         return;
                     }
                     plugin.getTeamService().demote(team, entry.id());
-                    plugin.getMessages().send(actor, "demote-success", Map.of("{player}", playerName(entry.id()), "{role}", "member"));
+                    plugin.sendMessage(actor, "demote-success", Map.of("{player}", playerName(entry.id()), "{role}", publicRole(TeamRole.MEMBER)));
                     sound(actor, "member-updated");
                 }
                 openMembers(actor, team, adminView, page, adminContext);
             }
         } catch (SQLException exception) {
             plugin.getLogger().log(Level.WARNING, "Failed to apply member action for team " + team.getId() + ".", exception);
-            plugin.getMessages().send(actor, "member-action-failed");
+            plugin.sendMessage(actor, "member-action-failed");
         }
     }
 
@@ -1921,11 +2192,11 @@ public final class GuiService {
 
     private boolean validateTeamName(Player player, String name) {
         if (!plugin.getTeamService().isValidTeamNameCharacters(name)) {
-            plugin.getMessages().send(player, "name-invalid");
+            plugin.sendMessage(player, "name-invalid");
             return false;
         }
         if (!plugin.getTeamService().isValidTeamNameLength(name)) {
-            plugin.getMessages().send(player, "name-too-long", Map.of("{max}", String.valueOf(plugin.getTeamService().maxNameLength())));
+            plugin.sendMessage(player, "name-too-long", Map.of("{max}", String.valueOf(plugin.getTeamService().maxNameLength())));
             return false;
         }
         return validateAllowedTeamText(player, name);
@@ -1933,14 +2204,14 @@ public final class GuiService {
 
     private boolean validateAllowedTeamText(Player player, String text) {
         if (plugin.getSwearFilterService().containsBlockedWord(text)) {
-            plugin.getMessages().send(player, "blocked-word");
+            plugin.sendMessage(player, "blocked-word");
             return false;
         }
         return true;
     }
 
     private InputPrompt promptFor(String key, String currentValue) {
-        String chatPrompt = plugin.getMessages().render(key);
+        String chatPrompt = plugin.getMessages().config().getString(key, "");
         return switch (key) {
             case "prompt-name" -> new InputPrompt(
                     "team-name",
@@ -2050,7 +2321,7 @@ public final class GuiService {
     private void mutate(Player player, Team team, boolean adminView, TeamAction action, CheckedAction checkedAction) {
         try {
             if (!adminView && !plugin.getTeamService().can(team, player.getUniqueId(), action)) {
-                plugin.getMessages().send(player, "no-permission-role");
+                plugin.sendMessage(player, "no-permission-role");
                 sound(player, "failure");
                 return;
             }
@@ -2061,7 +2332,7 @@ public final class GuiService {
             }
         } catch (Exception exception) {
             plugin.getLogger().log(Level.WARNING, "GUI action failed for team " + team.getId() + ".", exception);
-            plugin.getMessages().send(player, "action-failed");
+            plugin.sendMessage(player, "action-failed");
             sound(player, "failure");
         }
     }
@@ -2070,8 +2341,50 @@ public final class GuiService {
         return new FoGui(size, title(title));
     }
 
-    private FoGui publicGui(int size, Player viewer, String screen, String fallbackTitle) {
-        return new FoGui(size, GuiTitles.format(plugin.publicGui().title(screen, fallbackTitle)));
+    private FoGui publicGui(int size, Player viewer, String screen, String fallbackTitle, Team team) {
+        String menu = switch (screen) {
+            case "dashboard" -> size == 27 ? "dashboard-empty" : "dashboard-team";
+            case "confirm" -> "disband-confirm";
+            default -> screen;
+        };
+        // This inventory only collects gameplay callbacks. Core creates the real view.
+        FoGui collector = new FoGui(54, GuiTitles.format(fallbackTitle), menu);
+        collector.setPublicValues(publicContext(viewer, team, menu));
+        return collector;
+    }
+
+    private Map<String, String> publicContext(Player viewer, Team team, String menu) {
+        Map<String, String> values = new HashMap<>();
+        values.put("player", viewer == null ? "" : viewer.getName());
+        values.put("page", "1");
+        values.put("max_page", "1");
+        if (team == null) {
+            return values;
+        }
+        values.put("team", team.getName());
+        values.put("tag", team.getTag());
+        values.put("color", team.getColor());
+        values.put("description", team.getDescription());
+        values.put("owner", team.hasOwner() ? playerName(team.getOwnerId())
+                : plugin.publicGui().label("player.no-owner", ""));
+        values.put("score", String.valueOf(team.getScore()));
+        if (corePublicMenus.usesValue(menu, "rank")) {
+            values.put("rank", String.valueOf(plugin.getTeamService().scoreRank(team)));
+        }
+        values.put("balance", Text.money(team.getBalance()));
+        values.put("balance_action", plugin.getEconomyService().isAvailable()
+                ? plugin.publicGui().label("balance-action.available", "")
+                : plugin.publicGui().label("balance-action.unavailable", ""));
+        values.put("level", String.valueOf(team.getTeamLevel()));
+        values.put("xp", String.valueOf(team.getTeamXp()));
+        values.put("required_xp", String.valueOf(plugin.getTeamLevelService().requiredXp(team)));
+        values.put("members", String.valueOf(team.getMemberCount()));
+        values.put("admins", String.valueOf(team.getAdmins().size()));
+        values.put("current", String.valueOf(team.getMemberCount()));
+        values.put("max", String.valueOf(team.getMemberCap()));
+        values.put("warps", String.valueOf(team.getWarps().size()));
+        values.put("max_warps", String.valueOf(plugin.getTeamService().maxWarps()));
+        return values;
     }
 
     private ItemStack publicItem(Player viewer, String screen, String key, Material material,
@@ -2081,7 +2394,19 @@ public final class GuiService {
 
     private ItemStack publicItem(Player viewer, String screen, String key, Material material,
             String name, List<String> lore, Map<String, String> placeholders) {
-        return plugin.publicGui().button(viewer, screen, key, material, name, lore, placeholders);
+        return publicItem(viewer, screen, key, material, name, lore, placeholders, Map.of());
+    }
+
+    private ItemStack publicItem(Player viewer, String screen, String key, Material material,
+            String name, List<String> lore, Map<String, String> placeholders,
+            Map<String, List<String>> linePlaceholders) {
+        Map<String, String> values = new HashMap<>(placeholders);
+        if (linePlaceholders != null) {
+            linePlaceholders.forEach((id, lines) -> values.put(
+                    id.equals("invites") ? "invite_list" : id.equals("allies") ? "ally_list" : id,
+                    String.join(plugin.publicGui().label(id + ".separator", " "), lines)));
+        }
+        return markPublicItem(new ItemStack(material), screen, key, values);
     }
 
     private ItemStack screenItem(Player viewer, boolean adminView, String screen, String key,
@@ -2094,7 +2419,22 @@ public final class GuiService {
         return adminView ? item(material, name, lore) : publicItem(viewer, screen, key, material, name, lore, placeholders);
     }
 
+    private ItemStack screenItem(Player viewer, boolean adminView, String screen, String key,
+            Material material, String name, List<String> lore, Map<String, String> placeholders,
+            Map<String, List<String>> linePlaceholders) {
+        return adminView ? item(material, name, lore)
+                : publicItem(viewer, screen, key, material, name, lore, placeholders, linePlaceholders);
+    }
+
     private void openGui(Player player, FoGui gui) {
+        if (gui.publicMenuId() != null) {
+            try {
+                corePublicMenus.open(player, gui);
+            } finally {
+                publicMarkers.clear();
+            }
+            return;
+        }
         for (int slot = 0; slot < gui.getInventory().getSize(); slot++) {
             ItemStack item = gui.getInventory().getItem(slot);
             if (item != null) {
@@ -2105,13 +2445,32 @@ public final class GuiService {
     }
 
     private SharedChestHolder createSharedChest(Team team) {
-        SharedChestHolder holder = new SharedChestHolder(team.getId(), team.getEchestRows(),
-                GuiTitles.format(plugin.publicGui().title("chest", "ᴛᴇᴀᴍ ᴄʜᴇsᴛ")));
+        Map<String, String> values = CorePublicMenus.titleValues(publicContext(null, team, "chest"));
+        var frame = corePublicMenus.planChest(values);
+        SharedChestHolder holder = new SharedChestHolder(team.getId(), frame.definition().rows(),
+                team.getEchestRows(), DialogIcons.fallbackText(frame.title()));
         Inventory inventory = holder.getInventory();
-        for (int slot = 0; slot < Math.min(inventory.getSize(), team.getEchestContents().size()); slot++) {
+        for (int slot = 0; slot < holder.unlockedRows() * 9 && slot < team.getEchestContents().size(); slot++) {
             inventory.setItem(slot, cloneItem(team.getEchestContents().get(slot)));
         }
+        for (int slot = holder.unlockedRows() * 9; slot < inventory.getSize(); slot++) {
+            inventory.setItem(slot, me.foesio.core.gui.publicgui.PublicGuiRenderer.state(
+                    null, frame, "locked", values));
+        }
         return holder;
+    }
+
+    private void unlockSharedChestRow(Team team) {
+        SharedChestHolder holder = sharedChests.get(team.getId());
+        if (holder == null) {
+            return;
+        }
+        int before = holder.unlockedRows();
+        holder.setUnlockedRows(team.getEchestRows());
+        for (int slot = before * 9; slot < holder.unlockedRows() * 9; slot++) {
+            holder.getInventory().setItem(slot,
+                    slot < team.getEchestContents().size() ? cloneItem(team.getEchestContents().get(slot)) : null);
+        }
     }
 
     private ItemStack cloneItem(ItemStack item) {
@@ -2122,9 +2481,11 @@ public final class GuiService {
         return org.bukkit.ChatColor.DARK_GRAY + GuiTitles.format(input);
     }
 
-    private void fill(FoGui gui) {
-        Material filler = Material.matchMaterial(plugin.getConfig().getString("gui.filler-material", "GRAY_STAINED_GLASS_PANE"));
-        ItemStack pane = EditorItemFactory.templateItem(filler == null ? Material.GRAY_STAINED_GLASS_PANE : filler, " ", List.of());
+    private void fill(FoGui gui, Player viewer) {
+        if (gui.publicMenuId() != null) {
+            return;
+        }
+        ItemStack pane = plugin.publicGui().filler(viewer);
         for (int slot = 0; slot < gui.getInventory().getSize(); slot++) {
             gui.getInventory().setItem(slot, pane);
         }
@@ -2139,12 +2500,13 @@ public final class GuiService {
     }
 
     private ItemStack backButton(Player player) {
-        return buttons.back(player);
+        return plugin.publicGui().navigationButtons().back(player);
     }
 
     private void setBackButton(Player player, FoGui gui, Runnable action) {
         int slot = gui.getInventory().getSize() - 5;
-        gui.getInventory().setItem(slot, backButton(player));
+        gui.getInventory().setItem(slot, gui.publicMenuId() == null ? backButton(player)
+                : markPublicItem(new ItemStack(Material.IRON_DOOR), "navigation", "back", Map.of()));
         gui.setAction(slot, event -> {
             if (event.getWhoClicked() instanceof Player clickedPlayer) {
                 pendingBackNavigations.add(clickedPlayer.getUniqueId());
@@ -2153,20 +2515,70 @@ public final class GuiService {
         });
     }
 
-    private ItemStack previousPageButton(Player viewer, int targetPage, int maxPage) {
-        return buttons.previousPage(viewer, Math.max(0, targetPage), Math.max(0, maxPage));
+    private ItemStack previousPageButton(Player viewer, int targetPage, int maxPage, boolean publicView) {
+        if (!publicView) {
+            return plugin.publicGui().navigationButtons().previousPage(viewer, targetPage, maxPage);
+        }
+        return markPublicItem(new ItemStack(Material.ARROW), "navigation", "previous-page",
+                Map.of("page", String.valueOf(Math.max(0, targetPage)), "max_page", String.valueOf(Math.max(0, maxPage))));
     }
 
-    private ItemStack nextPageButton(Player viewer, int targetPage, int maxPage) {
-        return buttons.nextPage(viewer, Math.max(0, targetPage), Math.max(0, maxPage));
+    private ItemStack nextPageButton(Player viewer, int targetPage, int maxPage, boolean publicView) {
+        if (!publicView) {
+            return plugin.publicGui().navigationButtons().nextPage(viewer, targetPage, maxPage);
+        }
+        return markPublicItem(new ItemStack(Material.ARROW), "navigation", "next-page",
+                Map.of("page", String.valueOf(Math.max(0, targetPage)), "max_page", String.valueOf(Math.max(0, maxPage))));
+    }
+
+    private ItemStack markPublicItem(ItemStack item, String screen, String key, Map<String, String> values) {
+        UUID id = UUID.randomUUID();
+        publicMarkers.put(id, new PublicItemMarker(screen, key, Map.copyOf(values)));
+        var meta = item.getItemMeta();
+        meta.getPersistentDataContainer().set(publicMarkerKey, PersistentDataType.STRING, id.toString());
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    PublicItemMarker takePublicMarker(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) {
+            return null;
+        }
+        String id = item.getItemMeta().getPersistentDataContainer().get(publicMarkerKey, PersistentDataType.STRING);
+        if (id == null) {
+            return null;
+        }
+        try {
+            return publicMarkers.remove(UUID.fromString(id));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    public void forgetPublicSession(Player player) {
+        corePublicMenus.forget(player.getUniqueId());
+    }
+
+    record PublicItemMarker(String screen, String key, Map<String, String> values) {
     }
 
     private ItemStack searchButton(String filter) {
-        return buttons.search(filter);
+        return plugin.publicGui().navigationButtons().search(filter);
     }
 
     private ItemStack clearSearchButton(String target) {
-        return buttons.clearSearch(target);
+        return plugin.publicGui().navigationButtons().clearSearch(target);
+    }
+
+    private ItemStack publicPlayerHead(Player viewer, String screen, String key, UUID playerId,
+            String fallbackName, List<String> fallbackLore, Map<String, String> placeholders) {
+        ItemStack item = publicItem(viewer, screen, key, Material.PLAYER_HEAD, fallbackName, fallbackLore, placeholders);
+        if (item.getItemMeta() instanceof SkullMeta meta && !Team.NO_OWNER_UUID.equals(playerId)) {
+            Player online = Bukkit.getPlayer(playerId);
+            meta.setOwningPlayer(online == null ? Bukkit.getOfflinePlayer(playerId) : online);
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 
     private ItemStack playerHead(UUID playerId, String name, List<String> lore) {
@@ -2199,12 +2611,12 @@ public final class GuiService {
                 .sorted(Comparator.comparing(Team::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
         if (allies.isEmpty()) {
-            return List.of("#ffffffAllies: #a7b8b0None");
+            return List.of(plugin.publicGui().label("allies.empty", "#ffffffAllies: #a7b8b0None"));
         }
         List<String> lore = new ArrayList<>();
-        lore.add("#ffffffAllies:");
+        lore.add(plugin.publicGui().label("allies.header", "#ffffffAllies:"));
         for (Team ally : allies) {
-            lore.add("#a7b8b0- " + ally.getName());
+            lore.add(plugin.publicGui().label("allies.entry", "#a7b8b0- {team}", Map.of("team", ally.getName())));
         }
         return lore;
     }
@@ -2214,10 +2626,23 @@ public final class GuiService {
     }
 
     private String playerStatusLore(UUID playerId) {
+        return "#ffffffStatus: " + playerStatusValue(playerId);
+    }
+
+    private String playerStatusValue(UUID playerId) {
         if (Team.NO_OWNER_UUID.equals(playerId)) {
-            return "#ffffffStatus: #ff5d73No owner";
+            return plugin.publicGui().label("player-status.no-owner", "#ff5d73No owner");
         }
-        return Bukkit.getPlayer(playerId) == null ? "#ffffffStatus: #ff5d73Offline" : "#ffffffStatus: #3ecf8eOnline";
+        return Bukkit.getPlayer(playerId) == null
+                ? plugin.publicGui().label("player-status.offline", "#ff5d73Offline")
+                : plugin.publicGui().label("player-status.online", "#3ecf8eOnline");
+    }
+
+    private String publicRole(TeamRole role) {
+        if (role == null) {
+            return "";
+        }
+        return plugin.publicGui().label("roles." + role.name().toLowerCase(Locale.ROOT), role.displayName());
     }
 
     private String accent(String text) {
@@ -2232,19 +2657,19 @@ public final class GuiService {
     private void notifyTeamLeaders(Team team, String messageKey, Map<String, String> replacements) {
         Player owner = team.hasOwner() ? Bukkit.getPlayer(team.getOwnerId()) : null;
         if (owner != null) {
-            plugin.getMessages().send(owner, messageKey, replacements);
+            plugin.sendMessage(owner, messageKey, replacements);
         }
         for (UUID adminId : team.getAdmins()) {
             Player admin = Bukkit.getPlayer(adminId);
             if (admin != null) {
-                plugin.getMessages().send(admin, messageKey, replacements);
+                plugin.sendMessage(admin, messageKey, replacements);
             }
         }
     }
 
     private String playerName(UUID playerId) {
         if (Team.NO_OWNER_UUID.equals(playerId)) {
-            return "None";
+            return plugin.publicGui().label("player.no-owner", "None");
         }
         Player online = Bukkit.getPlayer(playerId);
         if (online != null) {
@@ -2268,7 +2693,7 @@ public final class GuiService {
         for (UUID memberId : plugin.getTeamService().allMembers(team)) {
             Player target = Bukkit.getPlayer(memberId);
             if (target != null) {
-                plugin.getMessages().send(target, messageKey, replacements);
+                plugin.sendMessage(target, messageKey, replacements);
             }
         }
     }
@@ -2323,7 +2748,7 @@ public final class GuiService {
         String title = player.getOpenInventory().getTitle();
         ScreenState previous = activeScreens.put(playerId, new ScreenState(title, adminView));
         if (pendingBackNavigations.remove(playerId)) {
-            if (previous == null || previous.adminView()) {
+            if (adminView || (previous != null && previous.adminView())) {
                 plugin.getEditorSounds().back(player);
             } else {
                 plugin.getSounds().play(player, "gui.back");

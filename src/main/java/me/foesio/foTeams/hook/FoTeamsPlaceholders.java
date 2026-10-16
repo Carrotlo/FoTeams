@@ -8,6 +8,7 @@ import me.foesio.foTeams.util.Text;
 import org.bukkit.OfflinePlayer;
 
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public final class FoTeamsPlaceholders {
     private FoTeamsPlaceholders() {
@@ -22,21 +23,23 @@ public final class FoTeamsPlaceholders {
                 .offline("team_colour", teamValue(plugin, FoTeamsPlaceholders::normalizedTeamColor))
                 .offline("team_description", teamValue(plugin, Team::getDescription))
                 .offline("team_score", teamValue(plugin, team -> String.valueOf(team.getScore())))
-                .offline("team_score_rank", teamValue(plugin, team -> String.valueOf(plugin.getTeamService().scoreRank(team)), noRankFallback(plugin)))
+                .offline("team_score_rank", teamValue(plugin, team -> String.valueOf(plugin.getTeamService().scoreRank(team)), () -> noRankFallback(plugin)))
                 .offline("team_balance", teamValue(plugin, team -> Text.money(team.getBalance())))
-                .offline("team_balance_rank", teamValue(plugin, team -> String.valueOf(plugin.getTeamService().balanceRank(team)), noRankFallback(plugin)))
+                .offline("team_balance_rank", teamValue(plugin, team -> String.valueOf(plugin.getTeamService().balanceRank(team)), () -> noRankFallback(plugin)))
                 .offline("team_level", teamValue(plugin, team -> String.valueOf(team.getTeamLevel())))
                 .offline("team_level_xp", teamValue(plugin, team -> String.valueOf(team.getTeamXp())))
                 .offline("team_level_required_xp", teamValue(plugin, team -> String.valueOf(plugin.getTeamLevelService().requiredXp(team))))
                 .offline("team_level_remaining_xp", teamValue(plugin, team -> String.valueOf(Math.max(0L, plugin.getTeamLevelService().requiredXp(team) - team.getTeamXp()))))
                 .offline("team_level_progress_percent", teamValue(plugin, team -> String.valueOf(levelProgressPercent(plugin, team))))
-                .offline("team_level_rank", teamValue(plugin, team -> String.valueOf(plugin.getTeamService().levelRank(team)), noRankFallback(plugin)))
+                .offline("team_level_rank", teamValue(plugin, team -> String.valueOf(plugin.getTeamService().levelRank(team)), () -> noRankFallback(plugin)))
                 .offline("team_role", player -> {
                     Team team = teamOf(plugin, player);
                     if (team == null) {
                         return noTeamFallback(plugin);
                     }
-                    return team.roleOf(player.getUniqueId()) == null ? noTeamFallback(plugin) : team.roleOf(player.getUniqueId()).displayName();
+                    return team.roleOf(player.getUniqueId()) == null ? noTeamFallback(plugin)
+                            : plugin.publicGui().label("roles."
+                            + team.roleOf(player.getUniqueId()).name().toLowerCase(java.util.Locale.ROOT), "");
                 })
                 .offline("team_member_count", teamValue(plugin, team -> String.valueOf(team.getMemberCount())))
                 .offline("team_member_cap", teamValue(plugin, team -> String.valueOf(team.getMemberCap())))
@@ -45,13 +48,14 @@ public final class FoTeamsPlaceholders {
     }
 
     private static FoPlaceholders.OfflinePlayerPlaceholder teamValue(FoTeams plugin, Function<Team, String> value) {
-        return teamValue(plugin, value, noTeamFallback(plugin));
+        return teamValue(plugin, value, () -> noTeamFallback(plugin));
     }
 
-    private static FoPlaceholders.OfflinePlayerPlaceholder teamValue(FoTeams plugin, Function<Team, String> value, String fallback) {
+    private static FoPlaceholders.OfflinePlayerPlaceholder teamValue(FoTeams plugin, Function<Team, String> value,
+                                                                     Supplier<String> fallback) {
         return player -> {
             Team team = teamOf(plugin, player);
-            return team == null ? fallback : value.apply(team);
+            return team == null ? fallback.get() : value.apply(team);
         };
     }
 
@@ -63,11 +67,11 @@ public final class FoTeamsPlaceholders {
     }
 
     private static String noTeamFallback(FoTeams plugin) {
-        return plugin.getConfig().getString("placeholders.no-team", plugin.getMessages().render("placeholder-no-team"));
+        return plugin.publicChat().placeholder("no-team");
     }
 
     private static String noRankFallback(FoTeams plugin) {
-        return plugin.getConfig().getString("placeholders.no-rank", plugin.getMessages().render("placeholder-no-rank"));
+        return plugin.publicChat().placeholder("no-rank");
     }
 
     private static int levelProgressPercent(FoTeams plugin, Team team) {

@@ -1,0 +1,16 @@
+# Native dialog for admin team browser search.
+# Used only on compatible Paper/Paper-fork servers with native-dialogs.enabled: true.
+# Spigot and older servers use messages.yml chat prompts instead.
+# Search checks team names, tags, and owner names. Empty input clears the search.
+title: "{theme}Search Teams"
+body:
+  - "{muted}Search by team name, tag, or owner."
+  - "{muted}Empty input clears the search."
+field-label: "{white}Search"
+initial-value: "{current}"
+confirm-button: "{good}Search"
+cancel-button: "{bad}Back"
+body-width: 300
+input-width: 300
+button-width: 100
+max-length: 80

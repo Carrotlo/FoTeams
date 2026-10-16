@@ -1,6 +1,5 @@
 package me.foesio.foTeams.service;
 
-import me.foesio.core.text.FoText;
 import me.foesio.foTeams.FoTeams;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -55,7 +54,7 @@ public final class TeleportDelayService {
         }
         if (pending.origin().hasChanged(player.getLocation())) {
             if (pendingTeleports.remove(player.getUniqueId(), pending)) {
-                plugin.getMessages().send(player, "teleport-canceled");
+                plugin.sendMessage(player, "teleport-canceled");
             }
             return;
         }
@@ -74,19 +73,27 @@ public final class TeleportDelayService {
 
     private void teleport(Player player, Location destination, String target, Runnable afterTeleport) {
         if (!player.teleport(destination)) {
-            plugin.getMessages().send(player, "action-failed");
+            plugin.sendMessage(player, "action-failed");
             return;
         }
-        plugin.getMessages().send(player, "teleport-success", Map.of("{target}", target));
+        plugin.sendMessage(player, "teleport-success", Map.of("{target}", displayTarget(target)));
         afterTeleport.run();
     }
 
     private void sendCountdown(Player player, String target, int secondsRemaining) {
-        String rendered = plugin.getMessages().render("teleport-countdown-actionbar", "Teleporting to {target} in {seconds}s.", Map.of(
-                "{target}", target,
+        String path = "teleport-countdown-actionbar";
+        if (!plugin.getMessages().config().isString(path)
+                || plugin.getMessages().config().getString(path, "").isEmpty()) {
+            return;
+        }
+        player.sendActionBar(plugin.getMessages().renderComponent(player, path, "", Map.of(
+                "{target}", displayTarget(target),
                 "{seconds}", String.valueOf(secondsRemaining)
-        ));
-        player.sendActionBar(FoText.color(rendered));
+        )));
+    }
+
+    private String displayTarget(String target) {
+        return target.equals("home") ? plugin.publicGui().label("teleport.home", "") : target;
     }
 
     private record PendingTeleport(UUID token, Position origin) {

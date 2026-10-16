@@ -89,7 +89,7 @@ public final class ChatListener implements Listener {
             return;
         }
         if (plugin.getSwearFilterService().containsBlockedWord(message)) {
-            plugin.getMessages().send(sender, "blocked-word");
+            plugin.sendMessage(sender, "blocked-word");
             return;
         }
         Map<String, String> tokens = new HashMap<>();
@@ -97,37 +97,35 @@ public final class ChatListener implements Listener {
         tokens.put("{message}", message);
         tokens.put("{team}", team.getName());
         if (mode == ChatMode.TEAM) {
-            String formatted = plugin.getMessages().renderTemplate(plugin.getConfig().getString("chat.team-format"), tokens);
             for (UUID memberId : plugin.getTeamService().allMembers(team)) {
                 Player target = Bukkit.getPlayer(memberId);
                 if (target != null) {
-                    target.sendMessage(formatted);
+                    sendFormatted(target, "team", tokens);
                 }
             }
-            spy("TEAM", sender, message);
+            spy(plugin.publicGui().label("chat.team-channel", ""), sender, message);
             return;
         }
         if (plugin.getTeamService().alliesOf(team).isEmpty()) {
-            plugin.getMessages().send(sender, "chat-no-allies");
+            plugin.sendMessage(sender, "chat-no-allies");
             plugin.getTeamChatService().setMode(sender.getUniqueId(), ChatMode.GLOBAL);
             return;
         }
-        String formatted = plugin.getMessages().renderTemplate(plugin.getConfig().getString("chat.ally-format"), tokens);
         for (UUID memberId : plugin.getTeamService().allMembers(team)) {
             Player target = Bukkit.getPlayer(memberId);
             if (target != null) {
-                target.sendMessage(formatted);
+                sendFormatted(target, "ally", tokens);
             }
         }
         for (Team ally : plugin.getTeamService().alliesOf(team)) {
             for (UUID memberId : plugin.getTeamService().allMembers(ally)) {
                 Player target = Bukkit.getPlayer(memberId);
                 if (target != null) {
-                    target.sendMessage(formatted);
+                    sendFormatted(target, "ally", tokens);
                 }
             }
         }
-        spy("ALLY", sender, message);
+        spy(plugin.publicGui().label("chat.ally-channel", ""), sender, message);
     }
 
     public void sendOneShot(Player sender, ChatMode mode, String message) {
@@ -140,13 +138,17 @@ public final class ChatListener implements Listener {
                 "{player}", sender.getName(),
                 "{message}", message
         );
-        String formatted = plugin.getMessages().renderTemplate(plugin.getConfig().getString("chat.spy-format"), tokens);
         for (UUID spy : plugin.getTeamChatService().spies()) {
             Player target = Bukkit.getPlayer(spy);
             if (target != null && !target.getUniqueId().equals(sender.getUniqueId())) {
-                target.sendMessage(formatted);
+                sendFormatted(target, "spy", tokens);
             }
         }
+    }
+
+    private void sendFormatted(Player target, String formatId, Map<String, String> tokens) {
+        target.sendMessage(plugin.getMessages().renderTemplateComponent(
+                target, plugin.publicChat().format(formatId), tokens));
     }
 
     private record RoutedChat(ChatMode mode, String message, long createdAtNanos) {

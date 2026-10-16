@@ -1,0 +1,47 @@
+title: "ᴄᴏɴꜰɪʀᴍ"
+rows: 3
+filler:
+  material: "GRAY_STAINED_GLASS_PANE"
+  name: " "
+  lore: []
+  enabled: true
+entries:
+  confirm:
+    slots:
+      - 11
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  cancel:
+    slots:
+      - 15
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+states:
+  confirm:
+    material: "LIME_DYE"
+    name: ":lime_dye: #3ecf8eConfirm"
+    lore:
+      - "#ffffffPermanently disband this team."
+  cancel:
+    material: "RED_DYE"
+    name: ":red_dye: #ff5d73Cancel"
+    lore:
+      - "#ffffffReturn without disbanding the team."

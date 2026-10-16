@@ -1,18 +1,13 @@
 package me.foesio.foTeams.input;
 
 import me.foesio.core.FoCoreContext;
-import me.foesio.core.dialog.ConfiguredTextDialogs;
 import me.foesio.core.dialog.DialogButton;
 import me.foesio.core.dialog.DialogService;
 import me.foesio.core.dialog.FallbackDialogService;
 import me.foesio.core.dialog.TextDialogRequest;
 import me.foesio.foTeams.FoTeams;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,7 +16,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 public final class CoreInputGuiService implements InputGuiService {
-    private static final String TAG_COLOR_BODY_EXAMPLE = "{muted}Use &&e{muted}e, yellow, or ##03fc88{muted}03fc88.";
     private static final String DISPLAY_RESTORE_TOKEN = "{theme}";
     private static final long CLOSE_SUPPRESSION_TICKS = 5L;
     private static final Set<String> PUBLIC_DIALOGS = Set.of(
@@ -29,12 +23,13 @@ public final class CoreInputGuiService implements InputGuiService {
             "team-tag",
             "team-description",
             "tag-color",
-            "warp-create"
+            "warp-create",
+            "team-search"
     );
 
     private final FoTeams plugin;
     private final ChatPromptInputGuiService chatFallback;
-    private final ConfiguredTextDialogs configuredDialogs;
+    private final TeamTextDialogs configuredDialogs;
     private final DialogService dialogs;
     private final Map<UUID, InputPrompt> activeFallbackPrompts = new ConcurrentHashMap<>();
     private final Set<UUID> fallbackCancels = ConcurrentHashMap.newKeySet();
@@ -42,8 +37,7 @@ public final class CoreInputGuiService implements InputGuiService {
     public CoreInputGuiService(FoTeams plugin, FoCoreContext core) {
         this.plugin = plugin;
         this.chatFallback = new ChatPromptInputGuiService(plugin);
-        this.configuredDialogs = ConfiguredTextDialogs.create(plugin);
-        migrateDialogEscapes();
+        this.configuredDialogs = new TeamTextDialogs(plugin);
         this.dialogs = core.createDialogService(new FallbackDialogService(
                 core.nativeDialogs(),
                 (player, request, onClose) -> run(onClose),
@@ -52,17 +46,25 @@ public final class CoreInputGuiService implements InputGuiService {
         ));
     }
 
+    public static boolean validateInstalled(FoTeams plugin) {
+        return TeamTextDialogs.validateInstalled(plugin);
+    }
+
     @Override
     public void openInput(Player player, InputPrompt prompt, Consumer<String> onSubmit, Runnable onCancel) {
         UUID playerId = player.getUniqueId();
         TextDialogRequest request = requestFor(prompt);
+        if (request == null) {
+            chatFallback.openInput(player, prompt, onSubmit, onCancel);
+            return;
+        }
         Consumer<String> submit = value -> {
             fallbackCancels.remove(playerId);
             onSubmit.accept(value);
         };
         Runnable cancel = () -> {
             if (!fallbackCancels.remove(playerId)) {
-                plugin.getMessages().send(player, "prompt-cancelled");
+                plugin.sendMessage(player, "prompt-cancelled");
             }
             onCancel.run();
         };
@@ -92,7 +94,6 @@ public final class CoreInputGuiService implements InputGuiService {
 
     @Override
     public void reload() {
-        migrateDialogEscapes();
         configuredDialogs.reload();
     }
 
@@ -123,8 +124,11 @@ public final class CoreInputGuiService implements InputGuiService {
         Map<String, String> replacements = displayReplacements(prompt);
         Map<String, String> rawReplacements = rawReplacements(prompt);
         TextDialogRequest request = PUBLIC_DIALOGS.contains(prompt.dialogId())
-                ? configuredDialogs.request(prompt.dialogId(), fallback)
+                ? configuredDialogs.request(prompt.dialogId())
                 : fallback;
+        if (request == null) {
+            return null;
+        }
         return render(request, replacements, rawReplacements);
     }
 
@@ -238,44 +242,6 @@ public final class CoreInputGuiService implements InputGuiService {
             builder.append(character);
         }
         return builder.toString();
-    }
-
-    private void migrateDialogEscapes() {
-        File file = new File(plugin.getDataFolder(), "dialogs/tag-color.yml");
-        if (!file.isFile()) {
-            return;
-        }
-
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-        List<String> body = config.getStringList("body");
-        if (body.isEmpty()) {
-            return;
-        }
-
-        boolean changed = false;
-        List<String> migrated = new ArrayList<>(body.size());
-        for (String line : body) {
-            String next = migrateTagColorDialogLine(line);
-            changed |= !next.equals(line);
-            migrated.add(next);
-        }
-        if (!changed) {
-            return;
-        }
-
-        config.set("body", migrated);
-        try {
-            config.save(file);
-        } catch (IOException exception) {
-            plugin.getLogger().warning("Could not migrate tag color dialog escape: " + exception.getMessage());
-        }
-    }
-
-    private String migrateTagColorDialogLine(String line) {
-        return line
-                .replace("{muted}Use &e, yellow, or #03fc88.", TAG_COLOR_BODY_EXAMPLE)
-                .replace("{muted}Use &\u200Be, yellow, or #\u200B03fc88.", TAG_COLOR_BODY_EXAMPLE)
-                .replace("{muted}Use &\uFE0Ee, yellow, or #\uFE0E03fc88.", TAG_COLOR_BODY_EXAMPLE);
     }
 
     private boolean hasHexColor(String value, int start) {

@@ -4,7 +4,9 @@ import me.foesio.foTeams.FoTeams;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
-import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public record BalanceDialogConfig(
@@ -12,7 +14,6 @@ public record BalanceDialogConfig(
         List<String> body,
         String fieldLabel,
         String initialValue,
-        String placeholder,
         Button depositButton,
         Button withdrawButton,
         Button backButton,
@@ -25,110 +26,159 @@ public record BalanceDialogConfig(
         int columns
 ) {
     private static final String RESOURCE = "dialogs/balance.yml";
+    private static volatile BalanceDialogConfig lastGood;
 
     public static BalanceDialogConfig load(FoTeams plugin) {
         File file = new File(plugin.getDataFolder(), RESOURCE);
-        ensureFile(plugin, file);
-
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-        boolean changed = false;
-        changed |= addDefault(config, "title", "{theme}Team Bank");
-        changed |= addDefault(config, "body", List.of(
-                "{muted}Team bank: {theme}{team_balance}",
-                "{muted}Your balance: {white}{player_balance}"
-        ));
-        changed |= addDefault(config, "field-label", "{white}Amount");
-        changed |= addDefault(config, "initial-value", "");
-        changed |= addDefault(config, "placeholder", "100");
-        changed |= addDefault(config, "button-width", 100);
-        changed |= addDefault(config, "deposit-button.label", "{good}Deposit");
-        changed |= addDefault(config, "deposit-button.tooltip", "Deposit this amount into the team bank.");
-        changed |= addDefault(config, "deposit-button.icon", "emerald");
-        changed |= addDefault(config, "withdraw-button.label", "{theme}Withdraw");
-        changed |= addDefault(config, "withdraw-button.tooltip", "Withdraw this amount from the team bank.");
-        changed |= addDefault(config, "withdraw-button.icon", "gold_ingot");
-        changed |= addDefault(config, "back-button.label", "{bad}Back");
-        changed |= addDefault(config, "back-button.tooltip", "Close without changing the team bank.");
-        changed |= addDefault(config, "back-button.icon", "iron_door");
-        changed |= addDefault(config, "body-width", 300);
-        changed |= addDefault(config, "input-width", 300);
-        changed |= addDefault(config, "max-length", 32);
-        changed |= addDefault(config, "label-visible", true);
-        changed |= addDefault(config, "can-close-with-escape", true);
-        changed |= addDefault(config, "pause", false);
-        changed |= addDefault(config, "columns", 3);
-        if (changed) {
-            save(plugin, config, file);
+        if (!file.isFile()) {
+            throw new IllegalStateException("Missing installed " + RESOURCE);
         }
-
-        int buttonWidth = config.getInt("button-width", 100);
-        return new BalanceDialogConfig(
-                config.getString("title", "{theme}Team Bank"),
-                body(config),
-                config.getString("field-label", "{white}Amount"),
-                config.getString("initial-value", ""),
-                config.getString("placeholder", "100"),
-                button(config, "deposit-button", "{good}Deposit", "Deposit this amount into the team bank.", "emerald", buttonWidth),
-                button(config, "withdraw-button", "{theme}Withdraw", "Withdraw this amount from the team bank.", "gold_ingot", buttonWidth),
-                button(config, "back-button", "{bad}Back", "Close without changing the team bank.", "iron_door", buttonWidth),
-                config.getInt("body-width", 300),
-                config.getInt("input-width", 300),
-                config.getInt("max-length", 32),
-                config.getBoolean("label-visible", true),
-                config.getBoolean("can-close-with-escape", true),
-                config.getBoolean("pause", false),
-                Math.max(1, config.getInt("columns", 3))
-        );
-    }
-
-    private static void ensureFile(FoTeams plugin, File file) {
-        File parent = file.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            plugin.getLogger().warning("Could not create dialog config folder: " + parent.getPath());
-        }
-        if (!file.exists()) {
+        try {
+            YamlConfiguration owner = new YamlConfiguration();
+            owner.load(file);
+            BalanceDialogConfig candidate = parse(owner);
+            lastGood = candidate;
+            return candidate;
+        } catch (Exception invalid) {
+            if (lastGood != null) {
+                plugin.getLogger().warning(RESOURCE + " is invalid; previous dialog remains active: " + invalid.getMessage());
+                return lastGood;
+            }
             try {
-                plugin.saveResource(RESOURCE, false);
-            } catch (IllegalArgumentException exception) {
-                save(plugin, new YamlConfiguration(), file);
+                YamlConfiguration owner = new YamlConfiguration();
+                owner.load(file);
+                BalanceDialogConfig fallback = repairStartup(plugin, owner, bundled(plugin));
+                lastGood = fallback;
+                return fallback;
+            } catch (Exception failure) {
+                throw new IllegalStateException("Cannot load " + RESOURCE
+                        + "; native balance dialog is unavailable and chat input remains available", failure);
             }
         }
     }
 
-    private static boolean addDefault(YamlConfiguration config, String path, Object value) {
-        if (config.contains(path)) {
+    public static boolean validateInstalled(FoTeams plugin) {
+        File file = new File(plugin.getDataFolder(), RESOURCE);
+        if (!file.exists()) {
+            return true; // An owner-removed native dialog keeps its chat fallback.
+        }
+        try {
+            YamlConfiguration owner = new YamlConfiguration();
+            owner.load(file);
+            parse(owner);
+            return true;
+        } catch (Exception invalid) {
+            plugin.getLogger().warning(RESOURCE + " is invalid; previous native dialog remains active: "
+                    + invalid.getMessage());
             return false;
         }
-        config.set(path, value);
-        return true;
     }
 
-    private static List<String> body(YamlConfiguration config) {
-        if (config.isList("body")) {
-            return config.getStringList("body");
+    private static YamlConfiguration bundled(FoTeams plugin) throws Exception {
+        try (InputStream input = plugin.getResource(RESOURCE)) {
+            if (input == null) {
+                throw new IllegalStateException("Missing bundled " + RESOURCE);
+            }
+            YamlConfiguration yaml = new YamlConfiguration();
+            yaml.load(new InputStreamReader(input, StandardCharsets.UTF_8));
+            return yaml;
         }
-        String text = config.getString("body", "");
-        if (text.isBlank()) {
-            return List.of();
-        }
-        return List.of(text.split("\\R", -1));
     }
 
-    private static Button button(YamlConfiguration config, String path, String label, String tooltip, String icon, int width) {
-        return new Button(
-                config.getString(path + ".label", label),
-                config.getString(path + ".tooltip", tooltip),
-                config.getString(path + ".icon", icon),
-                config.getInt(path + ".width", width)
+    private static BalanceDialogConfig repairStartup(FoTeams plugin, YamlConfiguration owner,
+                                                    YamlConfiguration bundled) {
+        for (int attempt = 0; attempt < 30; attempt++) {
+            try {
+                return parse(owner);
+            } catch (IllegalArgumentException invalid) {
+                String path = invalid.getMessage().split(" ")[0];
+                if (bundled.contains(path, false)) {
+                    plugin.getLogger().warning(RESOURCE + ":" + path + "=" + owner.get(path)
+                            + " (" + invalid.getMessage() + ") -> bundled default " + bundled.get(path)
+                            + " in memory; installed file was not changed.");
+                    owner.set(path, bundled.get(path));
+                } else if (path.endsWith(".tooltip") || path.endsWith(".icon")
+                        || path.equals("body") || path.equals("placeholder") || path.equals("initial-value")) {
+                    plugin.getLogger().warning(RESOURCE + ":" + path + "=" + owner.get(path)
+                            + " (" + invalid.getMessage() + ") -> absent bundled default in memory; "
+                            + "installed file was not changed.");
+                    owner.set(path, null);
+                } else {
+                    throw invalid;
+                }
+            }
+        }
+        throw new IllegalArgumentException("Too many invalid balance dialog fields");
+    }
+
+    static BalanceDialogConfig parse(YamlConfiguration yaml) {
+        return new BalanceDialogConfig(
+                requiredString(yaml, "title"),
+                optionalLines(yaml, "body"),
+                requiredString(yaml, "field-label"),
+                optionalString(yaml, "initial-value"),
+                button(yaml, "deposit-button"),
+                button(yaml, "withdraw-button"),
+                button(yaml, "back-button"),
+                positive(yaml, "body-width"),
+                positive(yaml, "input-width"),
+                positive(yaml, "max-length"),
+                optionalBoolean(yaml, "label-visible", true),
+                optionalBoolean(yaml, "can-close-with-escape", true),
+                optionalBoolean(yaml, "pause", false),
+                positive(yaml, "columns")
         );
     }
 
-    private static void save(FoTeams plugin, YamlConfiguration config, File file) {
-        try {
-            config.save(file);
-        } catch (IOException exception) {
-            plugin.getLogger().warning("Could not save " + RESOURCE + ": " + exception.getMessage());
+    private static Button button(YamlConfiguration yaml, String path) {
+        int width = yaml.contains(path + ".width", false) ? positive(yaml, path + ".width")
+                : positive(yaml, "button-width");
+        return new Button(requiredString(yaml, path + ".label"), optionalString(yaml, path + ".tooltip"),
+                optionalString(yaml, path + ".icon"), width);
+    }
+
+    private static String requiredString(YamlConfiguration yaml, String path) {
+        if (!yaml.isString(path) || yaml.getString(path, "").isBlank()) {
+            throw new IllegalArgumentException(path + " must be nonempty text");
         }
+        return yaml.getString(path);
+    }
+
+    private static String optionalString(YamlConfiguration yaml, String path) {
+        if (!yaml.contains(path, false)) {
+            return "";
+        }
+        if (!yaml.isString(path)) {
+            throw new IllegalArgumentException(path + " must be text");
+        }
+        return yaml.getString(path, "");
+    }
+
+    private static List<String> optionalLines(YamlConfiguration yaml, String path) {
+        if (!yaml.contains(path, false)) {
+            return List.of();
+        }
+        if (!yaml.isList(path) || yaml.getList(path).stream().anyMatch(value -> !(value instanceof String))) {
+            throw new IllegalArgumentException(path + " must be a text list");
+        }
+        return yaml.getStringList(path);
+    }
+
+    private static int positive(YamlConfiguration yaml, String path) {
+        if (!yaml.isInt(path) || yaml.getInt(path) < 1) {
+            throw new IllegalArgumentException(path + " must be a positive integer");
+        }
+        return yaml.getInt(path);
+    }
+
+    private static boolean optionalBoolean(YamlConfiguration yaml, String path, boolean fallback) {
+        if (!yaml.contains(path, false)) {
+            return fallback;
+        }
+        if (!yaml.isBoolean(path)) {
+            throw new IllegalArgumentException(path + " must be true or false");
+        }
+        return yaml.getBoolean(path);
     }
 
     public record Button(String label, String tooltip, String icon, int width) {

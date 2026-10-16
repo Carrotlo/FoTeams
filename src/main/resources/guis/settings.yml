@@ -1,0 +1,203 @@
+title: "ᴛᴇᴀᴍ sᴇᴛᴛɪɴɢs"
+rows: 4
+filler:
+  material: "GRAY_STAINED_GLASS_PANE"
+  name: " "
+  lore: []
+  enabled: true
+entries:
+  name:
+    slots:
+      - 10
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  tag:
+    slots:
+      - 11
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  description:
+    slots:
+      - 12
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  tag-color:
+    slots:
+      - 13
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  relations:
+    slots:
+      - 15
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  transfer:
+    slots:
+      - 21
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  pvp:
+    slots:
+      - 16
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  disband:
+    slots:
+      - 23
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+  back:
+    slots:
+      - 31
+    source-item: {}
+    actions:
+      left: "click"
+      right: "click"
+      shift-left: "click"
+      shift-right: "click"
+      drop: "click"
+      control-drop: "click"
+      middle: "click"
+      number-key: "click"
+      swap-offhand: "click"
+states:
+  name:
+    material: "NAME_TAG"
+    name: ":name_tag: #03fc88Name"
+    lore:
+      - "#ffffffCurrent: {team}"
+      - "#ffffffClick to rename."
+  tag:
+    material: "OAK_SIGN"
+    name: ":oak_sign: #03fc88Tag"
+    lore:
+      - "#ffffffCurrent: {tag}"
+      - "#ffffffClick to edit the tag."
+  description:
+    material: "BOOK"
+    name: ":book: #03fc88Description"
+    lore:
+      - "#ffffffCurrent: {description}"
+      - "#ffffffClick to edit."
+  tag-color:
+    material: "LEATHER_CHESTPLATE"
+    name: ":leather_chestplate: #03fc88Tag Color"
+    lore:
+      - "#ffffffCurrent: {color}"
+      - "#ffffffClick to change the tag color."
+  relations:
+    material: "LEAD"
+    name: ":lead: #03fc88Relations"
+    lore:
+      - "#ffffffManage allies and enemies."
+  transfer:
+    material: "TOTEM_OF_UNDYING"
+    name: ":totem_of_undying: #03fc88Transfer Ownership"
+    lore:
+      - "#ffffffChoose the next team owner."
+      - "#a7b8b0Requires transfer permission."
+  pvp-enabled:
+    material: "LIME_DYE"
+    name: ":lime_dye: #3ecf8eTeam PvP Protection Enabled"
+    lore:
+      - "#ffffffEnabled: teammates cannot damage each other."
+      - "#ffffffClick to toggle."
+  pvp-disabled:
+    material: "GRAY_DYE"
+    name: ":gray_dye: #ff5d73Team PvP Protection Disabled"
+    lore:
+      - "#ffffffDisabled: teammates can damage each other."
+      - "#ffffffClick to toggle."
+  pvp-forced:
+    material: "BARRIER"
+    name: ":barrier: #ff5d73Team PvP Protection Forced Off"
+    lore:
+      - "#ffffffDisabled: teammates can damage each other."
+      - "#ff5d73Forced disabled by global config."
+  disband:
+    material: "REDSTONE_BLOCK"
+    name: ":redstone_block: #ff5d73Disband Team"
+    lore:
+      - "#ffffffClick to confirm."
+  back:
+    material: "IRON_DOOR"
+    name: ":iron_door: #ffd966&lBACK"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eℹ Information ↓"
+      - "&7&l | &fReturn to the previous menu."
+      - " "
+      - "#3ecf8e→ Click to go back ←"

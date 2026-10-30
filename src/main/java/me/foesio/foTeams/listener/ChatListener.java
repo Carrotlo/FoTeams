@@ -1,6 +1,7 @@
 package me.foesio.foTeams.listener;
 
 import me.foesio.foTeams.FoTeams;
+import me.foesio.foTeams.api.event.TeamChatMessageEvent;
 import me.foesio.foTeams.model.ChatMode;
 import me.foesio.foTeams.model.Team;
 import me.foesio.foTeams.service.PromptService;
@@ -92,6 +93,16 @@ public final class ChatListener implements Listener {
             plugin.sendMessage(sender, "blocked-word");
             return;
         }
+        if (mode == ChatMode.ALLY && plugin.getTeamService().alliesOf(team).isEmpty()) {
+            plugin.sendMessage(sender, "chat-no-allies");
+            plugin.getTeamChatService().setMode(sender.getUniqueId(), ChatMode.GLOBAL);
+            return;
+        }
+        TeamChatMessageEvent chatEvent = new TeamChatMessageEvent(sender.getUniqueId(), team.getId(),
+                mode == ChatMode.TEAM ? TeamChatMessageEvent.Channel.TEAM : TeamChatMessageEvent.Channel.ALLY,
+                message);
+        Bukkit.getPluginManager().callEvent(chatEvent);
+        if (chatEvent.isCancelled()) return;
         Map<String, String> tokens = new HashMap<>();
         tokens.put("{player}", sender.getName());
         tokens.put("{message}", message);
@@ -104,11 +115,6 @@ public final class ChatListener implements Listener {
                 }
             }
             spy(plugin.publicGui().label("chat.team-channel", ""), sender, message);
-            return;
-        }
-        if (plugin.getTeamService().alliesOf(team).isEmpty()) {
-            plugin.sendMessage(sender, "chat-no-allies");
-            plugin.getTeamChatService().setMode(sender.getUniqueId(), ChatMode.GLOBAL);
             return;
         }
         for (UUID memberId : plugin.getTeamService().allMembers(team)) {

@@ -2,6 +2,7 @@ package me.foesio.foTeams.command;
 
 import me.foesio.core.number.LargeNumberParser;
 import me.foesio.foTeams.FoTeams;
+import me.foesio.foTeams.service.TeamOperationCancelledException;
 import me.foesio.foTeams.listener.ChatListener;
 import me.foesio.foTeams.model.ChatMode;
 import me.foesio.foTeams.model.RelationType;
@@ -92,6 +93,19 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
                     yield help(player);
                 }
             };
+        } catch (TeamOperationCancelledException exception) {
+            plugin.sendMessage(player, "action-failed");
+            playCommandError(player);
+            return true;
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            plugin.sendMessage(player, switch (String.valueOf(exception.getMessage())) {
+                case "full" -> "team-full";
+                case "no_invite" -> "no-invite";
+                case "already_in_team" -> "already-in-team";
+                default -> "action-failed";
+            });
+            playCommandError(player);
+            return true;
         } catch (SQLException exception) {
             plugin.getLogger().log(Level.WARNING, "Team command failed.", exception);
             plugin.sendMessage(player, "command-failed");

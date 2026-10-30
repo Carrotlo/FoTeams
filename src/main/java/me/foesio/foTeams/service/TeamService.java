@@ -1,5 +1,14 @@
 package me.foesio.foTeams.service;
 
+import me.foesio.foTeams.api.TeamRelation;
+import me.foesio.foTeams.api.event.TeamCreatedEvent;
+import me.foesio.foTeams.api.event.TeamDisbandedEvent;
+import me.foesio.foTeams.api.event.TeamMemberChangedEvent;
+import me.foesio.foTeams.api.event.TeamPreCreateEvent;
+import me.foesio.foTeams.api.event.TeamPreJoinEvent;
+import me.foesio.foTeams.api.event.TeamRelationChangedEvent;
+import me.foesio.foTeams.api.event.TeamRenamedEvent;
+import me.foesio.foTeams.FoTeams;
 import me.foesio.foTeams.model.RelationType;
 import me.foesio.foTeams.model.Team;
 import me.foesio.foTeams.model.TeamAction;
@@ -11,6 +20,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
+import org.bukkit.plugin.Plugin;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -31,12 +42,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.function.Consumer;
 
 public final class TeamService {
     public static final int MAX_ADMINS = 7;
     private static final Pattern TEAM_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_]+");
 
     private final TeamRepository repository;
+    private final Plugin eventOwner;
+    private final Consumer<Event> eventDispatcher;
     private final RolePermissionService rolePermissions;
     private final Logger logger;
     private final int maxMembers;
@@ -76,7 +90,19 @@ public final class TeamService {
     }
 
     public TeamService(TeamRepository repository, RolePermissionService rolePermissions, Logger logger, Settings settings) throws SQLException {
+        this(repository, rolePermissions, logger, settings, null);
+    }
+
+    public TeamService(TeamRepository repository, RolePermissionService rolePermissions, Logger logger, Settings settings, Plugin eventOwner) throws SQLException {
+        this(repository, rolePermissions, logger, settings, eventOwner,
+                event -> Bukkit.getPluginManager().callEvent(event));
+    }
+
+    TeamService(TeamRepository repository, RolePermissionService rolePermissions, Logger logger, Settings settings,
+                Plugin eventOwner, Consumer<Event> eventDispatcher) throws SQLException {
         this.repository = repository;
+        this.eventOwner = eventOwner;
+        this.eventDispatcher = Objects.requireNonNull(eventDispatcher, "eventDispatcher");
         this.rolePermissions = rolePermissions;
         this.logger = Objects.requireNonNull(logger, "logger");
         Settings safeSettings = Objects.requireNonNull(settings, "settings");
@@ -94,6 +120,12 @@ public final class TeamService {
         this.echestUpgradeBaseCost = Double.isFinite(safeSettings.echestUpgradeBaseCost()) ? Math.max(0.01D, safeSettings.echestUpgradeBaseCost()) : 0.01D;
         this.echestUpgradeMultiplier = Double.isFinite(safeSettings.echestUpgradeMultiplier()) ? Math.max(1.0D, safeSettings.echestUpgradeMultiplier()) : 1.0D;
         load();
+    }
+
+    private void fire(Event event) {
+        if (eventOwner != null && eventOwner.isEnabled()) {
+            eventDispatcher.accept(event);
+        }
     }
 
     private void load() throws SQLException {
@@ -214,16 +246,43 @@ public final class TeamService {
     }
 
     public Team createTeam(Player owner, String name) throws SQLException {
-        Team team = repository.createTeam(name, owner.getUniqueId(), defaultTag(name), "A fresh team.", "#03fc88", defaultTeamPvpEnabled, defaultMemberCap, defaultEchestRows);
-        teams.put(team.getId(), team);
-        teamByPlayer.put(owner.getUniqueId(), team.getId());
-        return team;
+        return createTeam(owner.getUniqueId(), name);
+    }
+
+    public Team createTeam(UUID ownerId, String name) throws SQLException {
+        Objects.requireNonNull(ownerId, "ownerId");
+        return createTeamInternal(ownerId, name);
     }
 
     public Team createOwnerlessTeam(String name) throws SQLException {
-        Team team = repository.createTeam(name, Team.NO_OWNER_UUID, defaultTag(name), "A fresh team.", "#03fc88", defaultTeamPvpEnabled, defaultMemberCap, defaultEchestRows);
+        return createTeamInternal(null, name);
+    }
+
+    private Team createTeamInternal(UUID ownerId, String name) throws SQLException {
+        validateNewTeam(ownerId, name);
+        TeamPreCreateEvent pre = new TeamPreCreateEvent(ownerId, name);
+        fire(pre);
+        if (pre.isCancelled()) throw new TeamOperationCancelledException();
+        validateNewTeam(ownerId, name);
+        Team team = repository.createTeam(name, ownerId == null ? Team.NO_OWNER_UUID : ownerId,
+                defaultTag(name), "A fresh team.", "#03fc88", defaultTeamPvpEnabled, defaultMemberCap, defaultEchestRows);
         teams.put(team.getId(), team);
+        if (ownerId != null) teamByPlayer.put(ownerId, team.getId());
+        fire(new TeamCreatedEvent(TeamSnapshots.of(team)));
         return team;
+    }
+
+    private void validateNewTeam(UUID ownerId, String name) {
+        if (!isValidTeamName(name) || isNameTaken(name)) {
+            throw new IllegalArgumentException("invalid or already used team name");
+        }
+        if (ownerId != null && teamOf(ownerId).isPresent()) {
+            throw new IllegalStateException("owner already has a team");
+        }
+        if (eventOwner instanceof FoTeams plugin && plugin.getSwearFilterService() != null
+                && plugin.getSwearFilterService().containsBlockedWord(name)) {
+            throw new IllegalArgumentException("blocked team name");
+        }
     }
 
     public boolean isNameTaken(String name) {
@@ -355,10 +414,17 @@ public final class TeamService {
     }
 
     public void invite(Team team, UUID inviterId, UUID targetId) throws SQLException {
+        List<TeamInvite> previous = new ArrayList<>(invites.getOrDefault(targetId, List.of()));
         TeamInvite invite = new TeamInvite(team.getId(), targetId, inviterId, System.currentTimeMillis(), System.currentTimeMillis() + inviteExpirySeconds * 1000L);
         invites.computeIfAbsent(targetId, ignored -> new ArrayList<>()).removeIf(existing -> existing.teamId() == team.getId());
         invites.computeIfAbsent(targetId, ignored -> new ArrayList<>()).add(invite);
-        repository.saveInvites(invites.values().stream().flatMap(Collection::stream).toList());
+        try {
+            repository.saveInvites(invites.values().stream().flatMap(Collection::stream).toList());
+        } catch (SQLException | RuntimeException failure) {
+            if (previous.isEmpty()) invites.remove(targetId);
+            else invites.put(targetId, previous);
+            throw failure;
+        }
     }
 
     public List<TeamInvite> teamInvites(Team team) {
@@ -379,12 +445,18 @@ public final class TeamService {
         if (existing == null) {
             return false;
         }
+        List<TeamInvite> previous = new ArrayList<>(existing);
         boolean removed = existing.removeIf(invite -> invite.teamId() == team.getId());
         if (existing.isEmpty()) {
             invites.remove(playerId);
         }
         if (removed) {
-            repository.saveInvites(invites.values().stream().flatMap(Collection::stream).toList());
+            try {
+                repository.saveInvites(invites.values().stream().flatMap(Collection::stream).toList());
+            } catch (SQLException | RuntimeException failure) {
+                invites.put(playerId, previous);
+                throw failure;
+            }
         }
         return removed;
     }
@@ -426,29 +498,86 @@ public final class TeamService {
     }
 
     public void join(Player player, Team team) throws SQLException {
+        join(player.getUniqueId(), team);
+    }
+
+    public void join(UUID playerId, Team team) throws SQLException {
+        Objects.requireNonNull(playerId, "playerId");
+        if (teamOf(playerId).isPresent()) {
+            throw new IllegalStateException("already_in_team");
+        }
+        if (team.roleOf(playerId) != null) {
+            throw new IllegalStateException("already_in_team");
+        }
+        if (!hasInvite(playerId, team.getId())) {
+            throw new IllegalStateException("no_invite");
+        }
         if (isFull(team)) {
             throw new IllegalStateException("full");
         }
-        team.getMembers().add(player.getUniqueId());
-        teamByPlayer.put(player.getUniqueId(), team.getId());
-        invites.computeIfAbsent(player.getUniqueId(), ignored -> new ArrayList<>()).removeIf(invite -> invite.teamId() == team.getId());
-        repository.saveTeam(team);
-        repository.saveInvites(invites.values().stream().flatMap(Collection::stream).toList());
+        TeamPreJoinEvent pre = new TeamPreJoinEvent(playerId, TeamSnapshots.of(team));
+        fire(pre);
+        if (pre.isCancelled()) throw new TeamOperationCancelledException();
+        if (teams.get(team.getId()) != team || teamOf(playerId).isPresent()
+                || !hasInvite(playerId, team.getId()) || isFull(team)) {
+            throw new IllegalStateException("join state changed during pre-event");
+        }
+        List<TeamInvite> formerInvites = new ArrayList<>(invites.getOrDefault(playerId, List.of()));
+        team.getMembers().add(playerId);
+        invites.computeIfAbsent(playerId, ignored -> new ArrayList<>()).removeIf(invite -> invite.teamId() == team.getId());
+        try {
+            repository.inTransaction(connection -> {
+                repository.saveTeam(team);
+                repository.saveInvites(invites.values().stream().flatMap(Collection::stream).toList());
+            });
+        } catch (SQLException | RuntimeException failure) {
+            team.getMembers().remove(playerId);
+            invites.put(playerId, formerInvites);
+            throw failure;
+        }
+        teamByPlayer.put(playerId, team.getId());
+        fire(new TeamMemberChangedEvent(team.getId(), playerId, null,
+                me.foesio.foTeams.api.TeamRole.MEMBER, TeamMemberChangedEvent.Cause.JOIN));
     }
 
     public void leave(Player player) throws SQLException {
-        Team team = teamOf(player.getUniqueId()).orElseThrow();
-        TeamRole role = team.roleOf(player.getUniqueId());
+        leave(player.getUniqueId());
+    }
+
+    public void leave(UUID playerId) throws SQLException {
+        Team team = teamOf(playerId).orElseThrow();
+        TeamRole role = team.roleOf(playerId);
+        if (role == null) throw new IllegalStateException("not_member");
         if (role == TeamRole.OWNER) {
             throw new IllegalStateException("owner_cannot_leave");
         }
-        team.getAdmins().remove(player.getUniqueId());
-        team.getMembers().remove(player.getUniqueId());
-        teamByPlayer.remove(player.getUniqueId());
-        repository.saveTeam(team);
+        team.getAdmins().remove(playerId);
+        team.getMembers().remove(playerId);
+        try {
+            repository.saveTeam(team);
+        } catch (SQLException | RuntimeException failure) {
+            if (role == TeamRole.ADMIN) team.getAdmins().add(playerId);
+            else team.getMembers().add(playerId);
+            throw failure;
+        }
+        teamByPlayer.remove(playerId);
+        fire(new TeamMemberChangedEvent(team.getId(), playerId, TeamSnapshots.role(role),
+                null, TeamMemberChangedEvent.Cause.LEAVE));
     }
 
     public void disband(Team team) throws SQLException {
+        if (teams.get(team.getId()) != team) throw new IllegalStateException("team no longer exists");
+        var formerTeam = TeamSnapshots.of(team);
+        Map<Integer, Map<Integer, RelationType>> removedRelations = new HashMap<>();
+        for (Map.Entry<Integer, Map<Integer, RelationType>> entry : relations.entrySet()) {
+            for (Map.Entry<Integer, RelationType> relation : entry.getValue().entrySet()) {
+                if (entry.getKey() == team.getId() || relation.getKey() == team.getId()) {
+                    removedRelations.computeIfAbsent(entry.getKey(), ignored -> new HashMap<>())
+                            .put(relation.getKey(), relation.getValue());
+                }
+            }
+        }
+        repository.deleteTeam(team.getId());
         Set<UUID> allMembers = allMembers(team);
         allMembers.forEach(teamByPlayer::remove);
         teams.remove(team.getId());
@@ -456,9 +585,13 @@ public final class TeamService {
         relations.values().forEach(map -> map.remove(team.getId()));
         invites.values().forEach(list -> list.removeIf(invite -> invite.teamId() == team.getId()));
         dirtyTeamLevelIds.remove(team.getId());
-        repository.deleteTeam(team.getId());
-        repository.saveInvites(invites.values().stream().flatMap(Collection::stream).toList());
-        repository.saveRelations(relations);
+        for (Map.Entry<Integer, Map<Integer, RelationType>> entry : removedRelations.entrySet()) {
+            for (Map.Entry<Integer, RelationType> relation : entry.getValue().entrySet()) {
+                fire(new TeamRelationChangedEvent(entry.getKey(), relation.getKey(),
+                        TeamRelation.valueOf(relation.getValue().name()), TeamRelation.NEUTRAL));
+            }
+        }
+        fire(new TeamDisbandedEvent(formerTeam));
     }
 
     public Set<UUID> allMembers(Team team) {
@@ -472,10 +605,21 @@ public final class TeamService {
     }
 
     public void kick(Team team, UUID targetId) throws SQLException {
+        TeamRole oldRole = team.roleOf(targetId);
+        if (oldRole == null) return;
+        if (oldRole == TeamRole.OWNER) throw new IllegalArgumentException("cannot kick owner");
         team.getAdmins().remove(targetId);
         team.getMembers().remove(targetId);
+        try {
+            repository.saveTeam(team);
+        } catch (SQLException | RuntimeException failure) {
+            if (oldRole == TeamRole.ADMIN) team.getAdmins().add(targetId);
+            else team.getMembers().add(targetId);
+            throw failure;
+        }
         teamByPlayer.remove(targetId);
-        repository.saveTeam(team);
+        if (oldRole != null) fire(new TeamMemberChangedEvent(team.getId(), targetId, TeamSnapshots.role(oldRole),
+                null, TeamMemberChangedEvent.Cause.KICK));
     }
 
     public boolean promote(Team team, UUID targetId) throws SQLException {
@@ -490,19 +634,43 @@ public final class TeamService {
         }
         team.getMembers().remove(targetId);
         team.getAdmins().add(targetId);
-        repository.saveTeam(team);
+        try {
+            repository.saveTeam(team);
+        } catch (SQLException | RuntimeException failure) {
+            team.getAdmins().remove(targetId);
+            team.getMembers().add(targetId);
+            throw failure;
+        }
+        fire(new TeamMemberChangedEvent(team.getId(), targetId, me.foesio.foTeams.api.TeamRole.MEMBER,
+                me.foesio.foTeams.api.TeamRole.ADMIN, TeamMemberChangedEvent.Cause.PROMOTE));
         return true;
     }
 
     public void demote(Team team, UUID targetId) throws SQLException {
-        if (team.getAdmins().remove(targetId)) {
+        boolean changed = team.getAdmins().remove(targetId);
+        if (changed) {
             team.getMembers().add(targetId);
         }
-        repository.saveTeam(team);
+        try {
+            repository.saveTeam(team);
+        } catch (SQLException | RuntimeException failure) {
+            if (changed) {
+                team.getMembers().remove(targetId);
+                team.getAdmins().add(targetId);
+            }
+            throw failure;
+        }
+        if (changed) fire(new TeamMemberChangedEvent(team.getId(), targetId, me.foesio.foTeams.api.TeamRole.ADMIN,
+                me.foesio.foTeams.api.TeamRole.MEMBER, TeamMemberChangedEvent.Cause.DEMOTE));
     }
 
     public void transfer(Team team, UUID newOwner) throws SQLException {
         UUID previousOwner = team.getOwnerId();
+        TeamRole newOwnerOldRole = team.roleOf(newOwner);
+        if (Objects.equals(previousOwner, newOwner)) return;
+        if (newOwnerOldRole == null) throw new IllegalArgumentException("new owner must be a member");
+        Set<UUID> previousAdmins = new HashSet<>(team.getAdmins());
+        Set<UUID> previousMembers = new HashSet<>(team.getMembers());
         team.getAdmins().remove(newOwner);
         team.getMembers().remove(newOwner);
         if (team.hasOwner()) {
@@ -513,12 +681,35 @@ public final class TeamService {
             }
         }
         team.setOwnerId(newOwner);
-        repository.saveTeam(team);
+        try {
+            repository.saveTeam(team);
+        } catch (SQLException | RuntimeException failure) {
+            team.setOwnerId(previousOwner);
+            team.getAdmins().clear();
+            team.getAdmins().addAll(previousAdmins);
+            team.getMembers().clear();
+            team.getMembers().addAll(previousMembers);
+            throw failure;
+        }
+        if (team.hasOwner() && previousOwner != null && !Team.NO_OWNER_UUID.equals(previousOwner)) {
+            fire(new TeamMemberChangedEvent(team.getId(), previousOwner, me.foesio.foTeams.api.TeamRole.OWNER,
+                    TeamSnapshots.role(team.roleOf(previousOwner)), TeamMemberChangedEvent.Cause.TRANSFER));
+        }
+        fire(new TeamMemberChangedEvent(team.getId(), newOwner, TeamSnapshots.role(newOwnerOldRole),
+                me.foesio.foTeams.api.TeamRole.OWNER, TeamMemberChangedEvent.Cause.TRANSFER));
     }
 
     public void updateName(Team team, String name) throws SQLException {
+        String oldName = team.getName();
+        if (oldName.equals(name)) return;
         team.setName(name);
-        repository.saveTeam(team);
+        try {
+            repository.saveTeam(team);
+        } catch (SQLException | RuntimeException failure) {
+            team.setName(oldName);
+            throw failure;
+        }
+        fire(new TeamRenamedEvent(team.getId(), oldName, name));
     }
 
     public void updateTag(Team team, String tag) throws SQLException {
@@ -590,28 +781,48 @@ public final class TeamService {
     }
 
     public boolean requestOrAcceptAlly(Team team, Team other) throws SQLException {
-        if (hasIncomingAllyRequest(team, other)) {
-            relations.computeIfAbsent(team.getId(), ignored -> new HashMap<>()).put(other.getId(), RelationType.ALLY);
-            relations.computeIfAbsent(other.getId(), ignored -> new HashMap<>()).put(team.getId(), RelationType.ALLY);
-            repository.saveRelations(relations);
+        if (relation(team, other) == RelationType.ALLY && relation(other, team) == RelationType.ALLY) {
             return true;
         }
-        relations.computeIfAbsent(team.getId(), ignored -> new HashMap<>()).put(other.getId(), RelationType.ALLY_REQUEST);
-        relations.computeIfAbsent(other.getId(), ignored -> new HashMap<>()).remove(team.getId());
-        repository.saveRelations(relations);
+        if (hasIncomingAllyRequest(team, other)) {
+            changeRelations(team, other, RelationType.ALLY, RelationType.ALLY);
+            return true;
+        }
+        changeRelations(team, other, RelationType.ALLY_REQUEST, RelationType.NEUTRAL);
         return false;
     }
 
     public void setEnemy(Team team, Team other) throws SQLException {
-        relations.computeIfAbsent(team.getId(), ignored -> new HashMap<>()).put(other.getId(), RelationType.ENEMY);
-        relations.computeIfAbsent(other.getId(), ignored -> new HashMap<>()).put(team.getId(), RelationType.ENEMY);
-        repository.saveRelations(relations);
+        changeRelations(team, other, RelationType.ENEMY, RelationType.ENEMY);
     }
 
     public void clearRelation(Team team, Team other) throws SQLException {
-        relations.computeIfAbsent(team.getId(), ignored -> new HashMap<>()).remove(other.getId());
-        relations.computeIfAbsent(other.getId(), ignored -> new HashMap<>()).remove(team.getId());
-        repository.saveRelations(relations);
+        changeRelations(team, other, RelationType.NEUTRAL, RelationType.NEUTRAL);
+    }
+
+    private void changeRelations(Team team, Team other, RelationType forward, RelationType reverse) throws SQLException {
+        RelationType oldForward = relation(team, other);
+        RelationType oldReverse = relation(other, team);
+        if (oldForward == forward && oldReverse == reverse) return;
+        putRelation(team.getId(), other.getId(), forward);
+        putRelation(other.getId(), team.getId(), reverse);
+        try {
+            repository.saveRelations(relations);
+        } catch (SQLException | RuntimeException failure) {
+            putRelation(team.getId(), other.getId(), oldForward);
+            putRelation(other.getId(), team.getId(), oldReverse);
+            throw failure;
+        }
+        if (oldForward != forward) fire(new TeamRelationChangedEvent(team.getId(), other.getId(),
+                TeamRelation.valueOf(oldForward.name()), TeamRelation.valueOf(forward.name())));
+        if (oldReverse != reverse) fire(new TeamRelationChangedEvent(other.getId(), team.getId(),
+                TeamRelation.valueOf(oldReverse.name()), TeamRelation.valueOf(reverse.name())));
+    }
+
+    private void putRelation(int sourceId, int targetId, RelationType relation) {
+        Map<Integer, RelationType> map = relations.computeIfAbsent(sourceId, ignored -> new HashMap<>());
+        if (relation == RelationType.NEUTRAL) map.remove(targetId);
+        else map.put(targetId, relation);
     }
 
     public RelationType relation(Team team, Team other) {
@@ -719,6 +930,20 @@ public final class TeamService {
             team.setScore(previousScore);
             throw exception;
         }
+    }
+
+    public int awardScore(Team team, int amount) throws SQLException {
+        if (amount <= 0) throw new IllegalArgumentException("amount must be positive");
+        int previousScore = team.getScore();
+        int newScore = Math.addExact(previousScore, amount);
+        team.setScore(newScore);
+        try {
+            repository.saveTeam(team);
+        } catch (SQLException | RuntimeException failure) {
+            team.setScore(previousScore);
+            throw failure;
+        }
+        return newScore;
     }
 
     public TeamLevelResult addTeamLevelXp(Team team, long amount, double baseRequiredXp, double multiplier, int maxLevel) throws SQLException {

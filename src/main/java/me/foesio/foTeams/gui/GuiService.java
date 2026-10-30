@@ -13,6 +13,7 @@ import me.foesio.core.gui.EntryBrowserMenus;
 import me.foesio.core.gui.EntryBrowserRequest;
 import me.foesio.core.gui.publicgui.PublicGuiInventoryHolder;
 import me.foesio.foTeams.FoTeams;
+import me.foesio.foTeams.service.TeamOperationCancelledException;
 import me.foesio.foTeams.input.BalanceDialogAction;
 import me.foesio.foTeams.input.BalanceDialogRequest;
 import me.foesio.foTeams.input.BalanceDialogService;
@@ -156,6 +157,8 @@ public final class GuiService {
                     sound(player, "created");
                     plugin.sendMessage(player, "team-created", Map.of("{team}", created.getName()));
                     openDashboard(player);
+                } catch (TeamOperationCancelledException exception) {
+                    plugin.sendMessage(player, "action-failed");
                 } catch (Exception exception) {
                     plugin.getLogger().log(Level.WARNING, "Failed to create team from dashboard for " + player.getName() + ".", exception);
                     plugin.sendMessage(player, "team-create-failed");
@@ -185,8 +188,15 @@ public final class GuiService {
                             sound(player, "joined");
                             broadcastTeamMessage(team, "member-joined", Map.of("{player}", player.getName(), "{team}", team.getName()));
                             openDashboard(player);
+                        } catch (TeamOperationCancelledException exception) {
+                            plugin.sendMessage(player, "action-failed");
                         } catch (IllegalStateException exception) {
-                            plugin.sendMessage(player, "team-full");
+                            plugin.sendMessage(player, switch (String.valueOf(exception.getMessage())) {
+                                case "full" -> "team-full";
+                                case "no_invite" -> "no-invite";
+                                case "already_in_team" -> "already-in-team";
+                                default -> "action-failed";
+                            });
                         } catch (SQLException exception) {
                             plugin.getLogger().log(Level.WARNING, "Failed to join invited team " + team.getId() + " for " + player.getName() + ".", exception);
                             plugin.sendMessage(player, "action-failed");
@@ -1339,6 +1349,10 @@ public final class GuiService {
                     }
                     Team team = plugin.getTeamService().createOwnerlessTeam(input);
                     openAdminEditor(player, team, search, holder.request().page());
+                } catch (TeamOperationCancelledException exception) {
+                    plugin.sendMessage(player, "action-failed");
+                } catch (IllegalArgumentException | IllegalStateException exception) {
+                    plugin.sendMessage(player, "action-failed");
                 } catch (SQLException exception) {
                     plugin.getLogger().log(Level.WARNING, "Failed to create ownerless team from editor.", exception);
                     plugin.sendMessage(player, "team-create-failed");

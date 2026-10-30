@@ -14,6 +14,7 @@ import me.foesio.core.sound.FoSoundService;
 import me.foesio.core.update.UpdateNoticeService;
 import me.foesio.core.text.PromptNormalizer;
 import me.foesio.foTeams.command.AdminCommand;
+import me.foesio.foTeams.api.FoTeamsService;
 import me.foesio.foTeams.command.TeamCommand;
 import me.foesio.foTeams.config.PluginConfigs;
 import me.foesio.foTeams.gui.GuiService;
@@ -37,6 +38,7 @@ import me.foesio.foTeams.service.SwearFilterService;
 import me.foesio.foTeams.service.TeamChatService;
 import me.foesio.foTeams.service.TeamLevelService;
 import me.foesio.foTeams.service.TeamService;
+import me.foesio.foTeams.service.DefaultFoTeamsService;
 import me.foesio.foTeams.service.TeleportDelayService;
 import me.foesio.foTeams.storage.Database;
 import me.foesio.foTeams.storage.TeamRepository;
@@ -44,6 +46,7 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
@@ -80,6 +83,7 @@ public final class FoTeams extends JavaPlugin {
     private Database database;
     private TeamRepository repository;
     private TeamService teamService;
+    private FoTeamsService publicApi;
     private VaultEconomyBridge economyService;
     private PromptService promptService;
     private TeamChatService teamChatService;
@@ -178,6 +182,8 @@ public final class FoTeams extends JavaPlugin {
         registerCommands();
         registerListeners();
         registerPlaceholders();
+        publicApi = new DefaultFoTeamsService(this);
+        getServer().getServicesManager().register(FoTeamsService.class, publicApi, this, ServicePriority.Normal);
     }
 
     private FoMessageMigrations messageMigrations() {
@@ -512,7 +518,7 @@ public final class FoTeams extends JavaPlugin {
     }
 
     private TeamService createTeamService() throws SQLException {
-        return new TeamService(repository, rolePermissions, getLogger(), teamServiceSettings());
+        return new TeamService(repository, rolePermissions, getLogger(), teamServiceSettings(), this);
     }
 
     private void startMetrics() {
@@ -666,6 +672,10 @@ public final class FoTeams extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (publicApi != null) {
+            getServer().getServicesManager().unregister(FoTeamsService.class, publicApi);
+            publicApi = null;
+        }
         stopTeamLevelAutosaveTask();
         if (guiService != null) {
             guiService.saveOpenSharedChests();

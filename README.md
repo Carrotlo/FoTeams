@@ -81,6 +81,6 @@ Main config areas: `max-members-per-team`, `default-members-per-team`, `max-warp
 <details>
 <summary><strong>Developer API</strong></summary>
 
-This plugin does not expose a public developer API.
+See [public API source](src/main/java/me/foesio/foTeams/api) for the supported Java service and Bukkit events.
 
 </details>

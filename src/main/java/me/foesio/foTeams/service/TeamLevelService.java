@@ -75,6 +75,22 @@ public final class TeamLevelService {
         return true;
     }
 
+    /** Grants team XP from another plugin, even when FoLevels is absent, if team levels are configured on. */
+    public TeamService.TeamLevelResult grantXp(Team team, long amount, String reason) throws SQLException {
+        if (!isConfiguredEnabled() || amount <= 0L) {
+            throw new IllegalStateException("team level progression unavailable");
+        }
+        TeamService.TeamLevelResult result = plugin.getTeamService().addTeamLevelXp(
+                team, amount, baseRequiredXp(), multiplier(), maxLevel());
+        for (int level : result.gainedLevels()) {
+            Map<String, String> replacements = replacements(team, null, level, result.gainedXp(),
+                    team.getTeamXp(), requiredXp(team), reason, "api");
+            broadcast(team, "team-level-up", replacements);
+            applyRewards(team, null, level, replacements);
+        }
+        return result;
+    }
+
     public void sendDisabledMessage(CommandSender sender) {
         if (!isConfiguredEnabled()) {
             plugin.sendMessage(sender, "team-level-disabled");
@@ -144,13 +160,13 @@ public final class TeamLevelService {
         replacements.put("{xp}", String.valueOf(gainedXp));
         replacements.put("{current}", String.valueOf(currentXp));
         replacements.put("{required}", String.valueOf(requiredXp));
-        replacements.put("{source}", source.getName());
-        replacements.put("{source_uuid}", source.getUniqueId().toString());
+        replacements.put("{source}", source == null ? "" : source.getName());
+        replacements.put("{source_uuid}", source == null ? "" : source.getUniqueId().toString());
         replacements.put("{reason}", reason == null ? "" : reason);
         replacements.put("{source_key}", sourceKey == null ? "" : sourceKey);
         replacements.put("{owner}", ownerName(team));
-        replacements.put("{player}", source.getName());
-        replacements.put("{player_uuid}", source.getUniqueId().toString());
+        replacements.put("{player}", source == null ? "" : source.getName());
+        replacements.put("{player_uuid}", source == null ? "" : source.getUniqueId().toString());
         return replacements;
     }
 

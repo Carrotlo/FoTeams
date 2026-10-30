@@ -156,7 +156,9 @@ public final class TeamRepository {
                 statement.setInt(13, team.getEchestRows());
                 statement.setString(14, InventoryCodec.encode(team.getEchestContents()));
                 statement.setInt(15, team.getId());
-                statement.executeUpdate();
+                if (statement.executeUpdate() != 1) {
+                    throw new SQLException("Team no longer exists: " + team.getId());
+                }
             }
 
             try (PreparedStatement deleteMembers = connection.prepareStatement("DELETE FROM team_members WHERE team_id = ?");
@@ -247,7 +249,9 @@ public final class TeamRepository {
                 deleteWarps.setInt(1, teamId);
                 deleteWarps.executeUpdate();
                 deleteTeam.setInt(1, teamId);
-                deleteTeam.executeUpdate();
+                if (deleteTeam.executeUpdate() != 1) {
+                    throw new SQLException("Team no longer exists: " + teamId);
+                }
             }
         });
     }
@@ -290,7 +294,8 @@ public final class TeamRepository {
         });
     }
 
-    private void inTransaction(SqlAction action) throws SQLException {
+    /** Runs several repository writes on the same connection as one SQLite transaction. */
+    public void inTransaction(SqlAction action) throws SQLException {
         Connection connection = database.connection();
         boolean previousAutoCommit = connection.getAutoCommit();
         try {
@@ -301,7 +306,7 @@ public final class TeamRepository {
             if (previousAutoCommit) {
                 connection.commit();
             }
-        } catch (SQLException exception) {
+        } catch (SQLException | RuntimeException exception) {
             if (previousAutoCommit) {
                 connection.rollback();
             }
@@ -313,7 +318,7 @@ public final class TeamRepository {
         }
     }
 
-    private interface SqlAction {
+    public interface SqlAction {
         void run(Connection connection) throws SQLException;
     }
 }

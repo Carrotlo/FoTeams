@@ -81,13 +81,7 @@ Main config areas: `max-members-per-team`, `default-members-per-team`, `max-warp
 <details>
 <summary><strong>Developer API</strong></summary>
 
-FoTeams provides `me.foesio.foTeams.api.FoTeamsService` through Bukkit's `ServicesManager`. The API lives in the FoTeams jar, outside its relocated FoPluginCore classes. Compile against the **same FoTeams jar installed on the server** with `provided` scope; do not shade FoTeams into a consumer.
-
-FoTeams is not published to a Maven repository by this project. If needed, install the built jar into your local Maven repository, using the version in this project's `pom.xml`:
-
-```sh
-mvn install:install-file -Dfile=/path/to/FoTeams-2.6.jar -DgroupId=me.foesio -DartifactId=FoTeams -Dversion=2.6 -Dpackaging=jar
-```
+Compile against the matching jar (`provided` in Maven, `compileOnly` in Gradle); install it locally if needed. Declare `FoTeams` in your plugin metadata (`softdepend` for an optional integration).
 
 ```xml
 <dependency>
@@ -98,87 +92,27 @@ mvn install:install-file -Dfile=/path/to/FoTeams-2.6.jar -DgroupId=me.foesio -Da
 </dependency>
 ```
 
-For `plugin.yml`, use `depend: [FoTeams]` when FoTeams is required or `softdepend: [FoTeams]` when optional. Keep direct API references in an integration class loaded only after checking that FoTeams is installed and enabled. Reacquire the service after a provider disable/re-enable; a cached service throws `IllegalStateException` while FoTeams is disabled. FoTeams reloads its internal team manager, but the registered API object looks up the current manager on every call.
-
 ```java
-Plugin provider = Bukkit.getPluginManager().getPlugin("FoTeams");
-if (provider != null && provider.isEnabled()) {
-    RegisteredServiceProvider<FoTeamsService> registration =
-            Bukkit.getServicesManager().getRegistration(FoTeamsService.class);
-    if (registration != null) {
-        FoTeamsService teams = registration.getProvider();
-        teams.teamOf(player.getUniqueId()).ifPresent(team ->
-                plugin.getLogger().info("Team " + team.id() + ": " + team.name()));
-    }
+import me.foesio.foTeams.api.FoTeamsService;
+import me.foesio.foTeams.api.event.TeamChatMessageEvent;
+
+FoTeamsService api = Bukkit.getServicesManager().load(FoTeamsService.class);
+if (api != null) api.teamOf(player.getUniqueId());
+
+@EventHandler
+public void onTeamChatMessageEvent(TeamChatMessageEvent event) {
+    Bukkit.getLogger().info(event.getClass().getSimpleName());
 }
 ```
 
-The service has `teamOf`, `teamById`, `teamByName`, and `teamNames` lookups. `TeamSnapshot` contains immutable identity, role, score, bank, and level values at lookup time. `relation(sourceId, targetId)` is directional and returns empty if either team is absent. `home` and `warp` return cloned `Location` values; `warp` also reports whether a password exists, never the password. Reading a location does not authorize teleporting a player or bypassing FoTeams' role/password checks.
+**API methods** (overloads grouped):
 
-Actions return `TeamActionResult` with a status and, where relevant, a value. Denied, invalid, unchanged, full, missing invite, and cancelled requests return statuses and fire no post event. SQLite errors throw `SQLException`. `createTeam` takes an owner UUID; `createOwnerlessTeam` is for administrative integrations. `inviteMember`, `revokeInvite`, `kickMember`, `promoteMember`, `demoteMember`, and `transferOwnership` take an actor UUID and apply FoTeams' matching role rule. A null actor is an explicit trusted/system action and bypasses role checks. `joinTeam` requires a live invitation; `leaveTeam` does not let owners leave. These methods do not send player messages.
+- `FoTeamsService`: `teamOf`, `teamById`, `teamByName`, `teamNames`, `relation`, `home`, `warp`, `warpNames`, `createTeam`, `createOwnerlessTeam`, `inviteMember`, `revokeInvite`, `joinTeam`, `leaveTeam`, `kickMember`, `promoteMember`, `demoteMember`, `transferOwnership`, `awardScore`, `grantTeamXp`, `creditBank`, `debitBank`, `depositFromPlayer`, `withdrawToPlayer`.
 
-`awardScore` adds a positive amount and rejects integer overflow. `grantTeamXp` requires `team-level.enabled`, runs the same level formula and level rewards as FoLevels gains, and returns `TeamXpResult`. Its XP value is the **requested** amount; max-level caps can retain less. Team XP and levels are first updated in memory and persisted on FoTeams' configured autosave cycle or disable/reload. `creditBank` and `debitBank` adjust only the FoTeams bank ledger. `depositFromPlayer` and `withdrawToPlayer` additionally move funds through Vault and enforce the player's team role permission. They return explicit economy and compensation statuses when a transfer cannot finish. Do not use a ledger-only method when a Vault transfer is required.
+**Other API types:** `TeamActionResult`, `TeamRelation`, `TeamRole`, `TeamSnapshot`, `TeamXpResult`, `WarpSnapshot`.
 
-All service calls and event callbacks must run in the appropriate server/player execution context. The service is **not async-safe**; do not call it directly from an async chat or database worker. Events are dispatched on the thread making the change, with Bukkit's async flag set from the actual dispatch thread. On regionized servers, consumers must schedule world/player work for the relevant entity or region.
+**Events:** `TeamChatMessageEvent`, `TeamCreatedEvent`, `TeamDisbandedEvent`, `TeamEvent` (base), `TeamMemberChangedEvent`, `TeamPreCreateEvent`, `TeamPreJoinEvent`, `TeamRelationChangedEvent`, `TeamRenamedEvent`.
 
-| Event | Timing and meaning |
-| --- | --- |
-| `TeamPreCreateEvent` | Cancellable after name/owner validation and before insertion. Null owner means an ownerless team. |
-| `TeamCreatedEvent` | After the new team is stored and indexed. Creation's initial owner is in its snapshot; no separate member event fires. |
-| `TeamPreJoinEvent` | Cancellable after invitation and capacity checks, before membership changes. |
-| `TeamMemberChangedEvent` | After a join, leave, kick, role change, or transfer is saved. Transfer can fire once for each affected player. Disband uses its own event. |
-| `TeamRenamedEvent` | After a changed name is saved; includes the old and new name. |
-| `TeamRelationChangedEvent` | After a changed directional relation is saved. A symmetric alliance/enemy change can fire twice. Disband fires neutralization events for removed directions. |
-| `TeamDisbandedEvent` | After deletion; contains the former immutable team snapshot. |
-| `TeamChatMessageEvent` | Cancellable after FoTeams' word filter and before team/ally delivery. Includes sender UUID, team ID, channel, and original routed message. Cancellation suppresses all delivery and chat-spy output. |
-
-Events do not fire for startup loading, reload reconstruction, blocked requests, or unchanged values. Bukkit listeners can register with ordinary `@EventHandler` methods; import event classes from `me.foesio.foTeams.api.event`.
-
-### Complete public API method index
-
-Signatures use short type names; import Fo types from this plugin's `api` package and Bukkit types from Bukkit.
-
-#### `FoTeamsService`
-
-```java
-Optional<TeamSnapshot> teamOf(UUID);
-Optional<TeamSnapshot> teamById(int);
-Optional<TeamSnapshot> teamByName(String);
-List<String> teamNames();
-Optional<TeamRelation> relation(int, int);
-Optional<Location> home(int);
-Optional<WarpSnapshot> warp(int, String);
-List<String> warpNames(int);
-TeamActionResult<TeamSnapshot> createTeam(UUID, String) throws SQLException;
-TeamActionResult<TeamSnapshot> createOwnerlessTeam(String) throws SQLException;
-TeamActionResult<Void> inviteMember(int, UUID, UUID) throws SQLException;
-TeamActionResult<Void> revokeInvite(int, UUID, UUID) throws SQLException;
-TeamActionResult<Void> joinTeam(int, UUID) throws SQLException;
-TeamActionResult<Void> leaveTeam(UUID) throws SQLException;
-TeamActionResult<Void> kickMember(int, UUID, UUID) throws SQLException;
-TeamActionResult<Void> promoteMember(int, UUID, UUID) throws SQLException;
-TeamActionResult<Void> demoteMember(int, UUID, UUID) throws SQLException;
-TeamActionResult<Void> transferOwnership(int, UUID, UUID) throws SQLException;
-TeamActionResult<Integer> awardScore(int, int) throws SQLException;
-TeamActionResult<TeamXpResult> grantTeamXp(int, long, String) throws SQLException;
-TeamActionResult<Double> creditBank(int, double) throws SQLException;
-TeamActionResult<Double> debitBank(int, double) throws SQLException;
-TeamActionResult<Double> depositFromPlayer(int, Player, double) throws SQLException;
-TeamActionResult<Double> withdrawToPlayer(int, Player, double) throws SQLException;
-```
-
-**Other public contract types:** `TeamActionResult`, `TeamRelation`, `TeamRole`, `TeamSnapshot`, `TeamXpResult`, `WarpSnapshot`.
-
-### Complete Bukkit event index
-
-- `TeamChatMessageEvent`.
-- `TeamCreatedEvent`.
-- `TeamDisbandedEvent`.
-- `TeamEvent` — abstract base for related events.
-- `TeamMemberChangedEvent`.
-- `TeamPreCreateEvent`.
-- `TeamPreJoinEvent`.
-- `TeamRelationChangedEvent`.
-- `TeamRenamedEvent`.
+[Browse API source](src/main/java/me/foesio/foTeams/api) for signatures and event details.
 
 </details>
